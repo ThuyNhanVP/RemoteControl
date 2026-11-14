@@ -9,7 +9,8 @@
 - **Dò tự động giao thức:** app gửi lệnh BẬT lần lượt theo từng giao thức, bạn bấm DỪNG khi điều hòa kêu "bíp".
 - **Nhiều thiết bị, nhiều cài sẵn:** mỗi điều hòa có giao thức và trạng thái riêng. Lưu và áp dụng cài sẵn bằng một chạm. Dữ liệu lưu trong SQLite trên máy.
 - **Đồng bộ Firebase (tùy chọn):** đăng nhập Google để đồng bộ thiết bị và cài sẵn giữa nhiều điện thoại, lưu nhật ký bật/tắt và xem thống kê giờ bật 7 ngày.
-- **Thời tiết:** dự báo hiện tại và 5 ngày theo thành phố (API Open-Meteo, miễn phí, không cần khóa), kèm gợi ý cài điều hòa.
+- **Thời tiết:** dự báo hiện tại và 5 ngày theo thành phố (API Open-Meteo, miễn phí, không cần khóa), kèm gợi ý cài điều hòa (nóng thì Lạnh/Khô, lạnh thì Sưởi) và nút **Áp dụng** để gửi lệnh ngay.
+- **Nhắc trước báo thức:** nếu dự báo giờ báo thức báo trời lạnh (cảm giác từ 21°C trở xuống), app gửi thông báo trước 20 phút gợi ý bật Sưởi.
 - **Dùng được khi không có mạng:** điều khiển IR và dữ liệu SQLite không cần internet.
 
 ## Giao thức hỗ trợ
@@ -76,7 +77,8 @@ Chưa cấu hình Firebase thì app vẫn chạy bình thường, thẻ đồng 
 4. **Cài sẵn:** bấm "Lưu cài đặt này" để lưu, bấm vào một cài sẵn để áp dụng, bấm dấu x trên cài sẵn để xóa.
 5. **Mã thô (Coolix, LG):** trong Cài đặt có ô gửi mã hex để thử mã tìm được từ nơi khác.
 6. **Đồng bộ:** Cài đặt, "Đăng nhập bằng Google". Thiết bị và cài sẵn tự đồng bộ sau mỗi thay đổi và khi mở lại app. Nút **Lịch sử** hiện thống kê giờ bật.
-7. **Thời tiết:** thẻ ở đầu màn hình chính. Bấm tên thành phố để đổi, bấm biểu tượng làm mới để cập nhật.
+7. **Thời tiết:** thẻ ở đầu màn hình chính. Bấm tên thành phố để đổi, bấm biểu tượng làm mới để cập nhật, bấm **Áp dụng** dưới gợi ý để đặt chế độ và nhiệt độ rồi gửi lệnh.
+8. **Nhắc trước báo thức:** đặt báo thức trong app Đồng hồ rồi mở app này một lần để nó đọc giờ báo thức. Lần đầu app xin quyền thông báo, hãy cho phép. Nếu đổi báo thức, mở lại app để cập nhật.
 
 Lưu ý: IR chỉ truyền một chiều, app không biết điều hòa thật đang bật hay tắt. Nó chỉ nhớ lệnh cuối cùng nó đã gửi. Nếu bạn tắt bằng remote giấy, nút Nguồn trong app có thể lệch một nhịp.
 

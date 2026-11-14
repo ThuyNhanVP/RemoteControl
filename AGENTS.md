@@ -31,11 +31,13 @@ App Flutter (Android) điều khiển điều hòa bằng đèn IR của điện
 | `lib/protocols.dart` | Enum `AcMode`, `AcFan`, `Feat`, `Proto`, lớp `IrCmd` và mã hóa 10 giao thức. Thuần Dart, không import Flutter | `greeState/greePattern`, `coolixFrame/coolixPattern`, `lgFrame/lgPattern`, `mideaState/Pattern`, `tclState/Pattern`, `samsungState/Extended/Pattern/Off`, `daikinState/Pattern`, `panasonicState/Pattern`, `clampInt`, `hexInt`, `hexBytes`, `coolixFeat` |
 | `lib/db.dart` | SQLite (sqflite), bản 2 | `Db.devices/addDevice/updateDevice/deleteDevice`, `presets/addPreset/deletePreset`, `getMeta/setMeta`, `onChanged`, hàm dành cho đồng bộ (`allPresets`, `pendingDeletes`, `applyRemoteDevice/Preset`, `deleteByCid`) |
 | `lib/firebase_sync.dart` | Firebase | `Cloud` (init, signIn, signOut, syncNow, `_sync`, log), `SyncCard`, `HistoryPage` |
-| `lib/weather.dart` | Thời tiết | `WeatherApi.forecast/search`, `WeatherCard`, `Place` |
+| `lib/weather.dart` | Thời tiết, gợi ý + nút Áp dụng | `WeatherApi.forecast/search`, `WeatherCard(onApply)`, `Place`, `Advice`, `_advice` |
+| `lib/reminder.dart` | Nhắc trước báo thức khi trời lạnh | `heatTempFor`, `planReminder` (thuần Dart, có test), `Reminder.sync` |
 | `lib/firebase_options.dart` | do `flutterfire configure` tạo, không sửa tay | |
-| `test/protocols_test.dart` | Test mã hóa | |
-| `android/.../MainActivity.kt` | Kênh `ir`: `hasIr`, `transmit(freq, pattern)` qua `ConsumerIrManager` | |
-| `android/app/src/main/AndroidManifest.xml` | Quyền `TRANSMIT_IR`, `INTERNET`; `android:label` là tên app | |
+| `test/protocols_test.dart`, `test/reminder_test.dart` | Test mã hóa và kế hoạch nhắc | |
+| `android/.../MainActivity.kt` | Kênh `ir`: `hasIr`, `transmit(freq, pattern)`, `nextAlarm`, `scheduleReminder`, `cancelReminder` | |
+| `android/.../ReminderReceiver.kt` | Hiện thông báo khi đến giờ nhắc (kênh `remind`) | |
+| `android/app/src/main/AndroidManifest.xml` | Quyền `TRANSMIT_IR`, `INTERNET`; `android:label` là tên app; cần `POST_NOTIFICATIONS` và `<receiver android:name=".ReminderReceiver" android:exported="false"/>` | |
 | `assets/icon/` | `icon.png`, `icon_foreground.png` cho `flutter_launcher_icons` | |
 
 Trong `_AcPageState` (main.dart): `_cmd(proto, on, {powerChange})` dựng lệnh theo giao thức; `_send(on)` gửi và ghi nhật ký; `_change(fn)` đổi giá trị rồi gửi ngay; `_toggleFeat`; `_setProto`; `_applyMap/_snapshot/_persist` (state <-> SQLite); `_useDevice`; `_reloadFromCloud`; `_probe/_stopProbe`; `_remote()` (màn chính), `_settings()`; getters theo giao thức: `_feats`, `_minTemp`, `_modes`, `_inFrame`, `_isLg`, `_isCoolix`.
@@ -46,7 +48,8 @@ Trong `_AcPageState` (main.dart): `_cmd(proto, on, {powerChange})` dựng lệnh
 - Dò tự động 10 giao thức (3 giây mỗi cái, bấm DỪNG khi điều hòa bíp; dò xong không dừng thì trả về giao thức ban đầu).
 - Nhiều thiết bị (mỗi cái có giao thức, trạng thái riêng), cài sẵn, trạng thái tự lưu. Gửi mã thô hex cho Coolix và LG.
 - Đồng bộ Firebase hai chiều (thiết bị, cài sẵn), nhật ký bật/tắt, màn Lịch sử (giờ bật 7 ngày, mỗi lần bật tối đa 8 giờ vì IR một chiều).
-- Thẻ thời tiết Open-Meteo (hiện tại, 5 ngày, gợi ý cài điều hòa, đổi thành phố, cache 30 phút).
+- Thẻ thời tiết Open-Meteo (hiện tại, 5 ngày, gợi ý cài điều hòa kể cả Sưởi khi cảm giác <= 21°C, nút **Áp dụng** gửi lệnh, đổi thành phố, cache 30 phút). LG không có Sưởi nên báo thay vì áp dụng.
+- Nhắc trước báo thức: mỗi lần có dự báo mới, app đọc báo thức kế tiếp (`AlarmManager.getNextAlarmClock`), lấy dự báo cảm giác của giờ đó, nếu <= 21°C thì hẹn thông báo trước 20 phút gợi ý bật Sưởi; không lạnh hoặc không có báo thức thì hủy.
 - Test mã hóa, README, icon bông tuyết.
 
 ## 4. Giao thức
@@ -94,7 +97,7 @@ Mức kiểm chứng: Midea, TCL, Samsung khớp từng byte với mã mẫu c�
 
 ## 7. Thời tiết
 
-Open-Meteo, không cần khóa: `api.open-meteo.com/v1/forecast` (hiện tại + 5 ngày, `timezone=auto`) và `geocoding-api.open-meteo.com/v1/search`. Mặc định Hà Nội. Lưu vị trí và cache JSON trong `meta`. Chưa gọi lại nếu cache dưới 30 phút (trừ nút làm mới và khi đổi thành phố).
+Open-Meteo, không cần khóa: `api.open-meteo.com/v1/forecast` (hiện tại + 5 ngày, `timezone=auto`) và `geocoding-api.open-meteo.com/v1/search`. Mặc định Hà Nội. Có thêm `hourly=apparent_temperature` cho phần nhắc. Lưu vị trí và cache JSON trong `meta`. Chưa gọi lại nếu cache dưới 30 phút (trừ nút làm mới và khi đổi thành phố).
 
 ## 8. Lệnh thường dùng
 
@@ -119,6 +122,7 @@ Thư viện chính: sqflite, path, firebase_core, firebase_auth, cloud_firestore
 - Cảnh báo "plugins apply Kotlin Gradle Plugin" của Flutter là cảnh báo tương lai, bỏ qua được.
 - Tên riêng tư (dấu `_`) chỉ dùng được trong cùng file: hàm dùng chung giữa `main.dart` và `protocols.dart` phải không có dấu gạch dưới.
 - `google-services.json` và `firebase_options.dart` nằm trong `.gitignore` (GitHub báo lộ khóa API). Không commit lại; máy mới chạy `flutterfire configure`. Khóa Android đã giới hạn theo app và 4 API; đổi khóa ký phải thêm SHA-1.
+- Nhắc báo thức chỉ cập nhật khi app mở (hoặc có dự báo mới): đổi báo thức mà không mở app thì thông báo cũ vẫn hẹn theo giờ cũ; khởi động lại máy làm mất hẹn. Dùng `setAndAllowWhileIdle` (không chính xác tuyệt đối). Giờ dự báo coi như cùng múi giờ điện thoại. Một số hãng (HiOS...) có thể không báo giờ báo thức qua `getNextAlarmClock`; chưa kiểm chứng trên TECNO.
 - IR một chiều: app không biết điều hòa thật đang bật hay tắt; `powered` chỉ là lệnh cuối app đã gửi.
 - Icon mặc định Flutter dùng tên `Icons.toys_outlined` trông như xe đồ chơi; quạt dùng `FanIcon` tự vẽ.
 - Độ dài chuỗi xung tối đa mà bộ phát IR của máy chấp nhận chưa biết (Daikin khoảng 580 giá trị); nếu một giao thức dài không phát được, hãy nghi ngờ giới hạn này.
@@ -128,7 +132,6 @@ Thư viện chính: sqflite, path, firebase_core, firebase_auth, cloud_firestore
 1. Xác nhận giao thức của Casper và LG trên máy thật (kết quả dò của người dùng). Nếu không giao thức nào ăn: bắt tín hiệu remote thật bằng VS1838B + ESP32/Arduino (IRrecvDumpV2) rồi viết giao thức riêng.
 2. Điều khiển TV (hãng chưa biết); mã lấy từ IRDB (probonopd/irdb) hoặc Flipper-IRDB.
 3. Hẹn giờ (phụ thuộc giao thức đã xác nhận).
-4. Nút "áp dụng gợi ý" từ thẻ thời tiết vào điều hòa.
 5. Công tắc bật/tắt đồng bộ trong Cài đặt.
 6. Thông báo nhắc (FCM cần Cloud Functions gói Blaze; thay thế không cần máy chủ: `flutter_local_notifications`).
 7. Điều khiển từ xa qua internet bằng một điện thoại cũ làm "trạm" (lệnh qua Firestore).
@@ -138,6 +141,7 @@ Thư viện chính: sqflite, path, firebase_core, firebase_auth, cloud_firestore
 
 | Ngày | Thay đổi | File |
 |---|---|---|
+| 2026-11-14 | Gợi ý Sưởi khi lạnh + nút Áp dụng trên thẻ thời tiết; thông báo nhắc 20 phút trước báo thức khi trời lạnh (Kotlin `nextAlarm`/`scheduleReminder`/`ReminderReceiver`, `reminder.dart`, test) | weather.dart, main.dart, reminder.dart, MainActivity.kt, ReminderReceiver.kt, AndroidManifest.xml, test/reminder_test.dart |
 | 2026-11-14 | Khóa API bị GitHub báo lộ: giới hạn khóa Android theo app + 4 API, gỡ 2 file Firebase khỏi repo, cập nhật quy chuẩn Git | .gitignore, README.md, AGENTS.md |
 | 2026-11-13 | Tách mã hóa giao thức khỏi `main.dart` sang `protocols.dart`, thêm `test/protocols_test.dart`, viết README và AGENTS.md | main.dart, protocols.dart, test/, README.md, AGENTS.md |
 | 2026-11-12 | Sửa theo review: đồng bộ khi quay lại app và nạp lại trạng thái từ cloud; dò giao thức trả về giao thức cũ; nhớ trạng thái nguồn từng thiết bị; giới hạn 8 giờ/lần bật khi thống kê; thời tiết dùng cache 30 phút; bỏ Analytics; bỏ đoạn lặp Gree | main.dart, firebase_sync.dart, weather.dart |
