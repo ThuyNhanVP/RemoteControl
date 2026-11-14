@@ -383,6 +383,19 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
 
   void _togglePower() => _send(!powered);
 
+  // Áp dụng gợi ý từ thẻ thời tiết (LG không có chế độ Sưởi)
+  void _applyAdvice(AcMode m, int t) {
+    if (_isLg && m == AcMode.heat) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Giao thức LG không có chế độ Sưởi')));
+      return;
+    }
+    _change(() {
+      mode = m;
+      temp = t < _minTemp ? _minTemp : t;
+    });
+  }
+
   // Đổi giá trị rồi phát ngay (kèm lệnh BẬT), giống bấm nút trên remote thật
   void _change(VoidCallback fn) {
     setState(fn);
@@ -933,7 +946,7 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       child: Column(
         children: [
-          const WeatherCard(),
+          WeatherCard(onApply: _applyAdvice),
           const SizedBox(height: 12),
           _display(),
           const SizedBox(height: 24),
