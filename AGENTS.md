@@ -118,6 +118,7 @@ Thư viện chính: sqflite, path, firebase_core, firebase_auth, cloud_firestore
 - `AndroidManifest.xml` phải có `INTERNET` (bản release không tự có).
 - Cảnh báo "plugins apply Kotlin Gradle Plugin" của Flutter là cảnh báo tương lai, bỏ qua được.
 - Tên riêng tư (dấu `_`) chỉ dùng được trong cùng file: hàm dùng chung giữa `main.dart` và `protocols.dart` phải không có dấu gạch dưới.
+- `google-services.json` và `firebase_options.dart` nằm trong `.gitignore` (GitHub báo lộ khóa API). Không commit lại; máy mới chạy `flutterfire configure`. Khóa Android đã giới hạn theo app và 4 API; đổi khóa ký phải thêm SHA-1.
 - IR một chiều: app không biết điều hòa thật đang bật hay tắt; `powered` chỉ là lệnh cuối app đã gửi.
 - Icon mặc định Flutter dùng tên `Icons.toys_outlined` trông như xe đồ chơi; quạt dùng `FanIcon` tự vẽ.
 - Độ dài chuỗi xung tối đa mà bộ phát IR của máy chấp nhận chưa biết (Daikin khoảng 580 giá trị); nếu một giao thức dài không phát được, hãy nghi ngờ giới hạn này.
@@ -137,6 +138,7 @@ Thư viện chính: sqflite, path, firebase_core, firebase_auth, cloud_firestore
 
 | Ngày | Thay đổi | File |
 |---|---|---|
+| 2026-11-14 | Khóa API bị GitHub báo lộ: giới hạn khóa Android theo app + 4 API, gỡ 2 file Firebase khỏi repo, cập nhật quy chuẩn Git | .gitignore, README.md, AGENTS.md |
 | 2026-11-13 | Tách mã hóa giao thức khỏi `main.dart` sang `protocols.dart`, thêm `test/protocols_test.dart`, viết README và AGENTS.md | main.dart, protocols.dart, test/, README.md, AGENTS.md |
 | 2026-11-12 | Sửa theo review: đồng bộ khi quay lại app và nạp lại trạng thái từ cloud; dò giao thức trả về giao thức cũ; nhớ trạng thái nguồn từng thiết bị; giới hạn 8 giờ/lần bật khi thống kê; thời tiết dùng cache 30 phút; bỏ Analytics; bỏ đoạn lặp Gree | main.dart, firebase_sync.dart, weather.dart |
 | 2026-11-10 | Thẻ thời tiết (Open-Meteo); đổi tên/icon app | weather.dart, main.dart |

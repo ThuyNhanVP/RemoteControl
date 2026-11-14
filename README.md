@@ -145,8 +145,12 @@ android/key.properties
 android/local.properties
 *.jks
 *.keystore
+android/app/google-services.json
+lib/firebase_options.dart
 ```
-Không commit mật khẩu, khóa ký, file `.env`. `google-services.json` và `firebase_options.dart` chỉ chứa khóa định danh công khai nên commit được, nhưng bảo mật dữ liệu phải dựa vào quy tắc Firestore, không dựa vào việc giấu file. Nếu repo công khai, cân nhắc đặt giới hạn cho API key trong Google Cloud Console.
+Hai file Firebase chứa khóa API (`AIza...`). GitHub quét thấy sẽ báo "Public leak" ở repo công khai. Bảo mật dữ liệu dựa vào quy tắc Firestore và giới hạn khóa, nhưng vẫn không đưa lên. Máy mới clone về phải chạy lại `dart pub global run flutterfire_cli:flutterfire configure` để tạo lại hai file.
+
+Khóa API trong Google Cloud Console (APIs and services, Identifiers) phải giới hạn: **Application restrictions** chọn Android apps (package `com.example.test2` + SHA-1), **API restrictions** chỉ giữ Identity Toolkit, Token Service, Cloud Firestore, Firebase Installations. Đổi khóa ký thì thêm SHA-1 mới.
 
 **Quy trình**
 ```
