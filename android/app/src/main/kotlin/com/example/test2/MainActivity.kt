@@ -64,6 +64,18 @@ class MainActivity : FlutterActivity() {
                             result.success(null)
                         }
                     }
+                    // Lưu lệnh BẬT/TẮT cho ô cài đặt nhanh (IrTileService)
+                    "setTile" -> {
+                        getSharedPreferences("tile", MODE_PRIVATE).edit()
+                            .putString("on", call.argument<String>("on"))
+                            .putString("off", call.argument<String>("off"))
+                            .putBoolean("powered", call.argument<Boolean>("powered") ?: false)
+                            .apply()
+                        result.success(null)
+                    }
+                    "tileOn" -> result.success(
+                        getSharedPreferences("tile", MODE_PRIVATE).getBoolean("powered", false)
+                    )
                     "cancelReminder" -> {
                         am.cancel(reminderIntent())
                         result.success(null)
