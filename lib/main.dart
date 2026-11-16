@@ -83,15 +83,15 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-        title: 'Remote',
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          colorSchemeSeed: Colors.indigo,
-          useMaterial3: true,
-          scaffoldBackgroundColor: const Color(0xFFF4F4F6),
-        ),
-        home: const AcPage(),
-      );
+    title: 'Remote',
+    debugShowCheckedModeBanner: false,
+    theme: ThemeData(
+      colorSchemeSeed: Colors.indigo,
+      useMaterial3: true,
+      scaffoldBackgroundColor: const Color(0xFFF4F4F6),
+    ),
+    home: const AcPage(),
+  );
 }
 
 /// Icon cánh quạt tự vẽ (bộ icon có sẵn của Flutter không có hình quạt).
@@ -287,7 +287,32 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
   // Quay lại app thì kéo dữ liệu mới từ máy khác trước khi người dùng bấm nút.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) Cloud.syncNow();
+    if (state == AppLifecycleState.resumed) {
+      Cloud.syncNow();
+      _adoptTile();
+    }
+  }
+
+  // Ô cài đặt nhanh phát IR bằng Kotlin khi app đóng, nên cần lưu sẵn lệnh BẬT/TẮT của thiết bị đang dùng
+  Future<void> _syncTile() async {
+    try {
+      String enc(IrCmd c) => '${c.freq};${c.pattern.join(',')}';
+      await _ch.invokeMethod('setTile',
+          {'on': enc(_cmd(proto, true)), 'off': enc(_cmd(proto, false)), 'powered': powered});
+    } catch (e) {
+      debugPrint('tile: $e'); // tiện ích phụ: không làm hỏng điều khiển
+    }
+  }
+
+  // Quay lại app: nhận trạng thái nguồn nếu đã đổi bằng ô cài đặt nhanh
+  Future<void> _adoptTile() async {
+    try {
+      final p = await _ch.invokeMethod<bool>('tileOn');
+      if (p == null || p == powered || !mounted) return;
+      setState(() => powered = p);
+      final id = deviceId;
+      if (id != null) Db.setMeta('powered_$id', p ? '1' : '0');
+    } catch (_) {}
   }
 
   // ---------- Tạo và phát lệnh ----------
@@ -374,6 +399,7 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
     setState(() => powered = on);
     final id = deviceId;
     if (id != null) Db.setMeta('powered_$id', on ? '1' : '0');
+    _syncTile();
     if (powerChange) {
       Cloud.log(on ? 'on' : 'off',
           device: deviceName, proto: proto.name, mode: mode.name, temp: temp);
@@ -442,27 +468,27 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
 
   /// Trạng thái hiện tại dưới dạng Map để ghi vào CSDL.
   Map<String, Object?> _snapshot() => {
-        'proto': proto.name,
-        'mode': mode.name,
-        'temp': temp,
-        'fan': fan.name,
-        'swing': feat[Feat.swing]! ? 1 : 0,
-        'sleep': feat[Feat.sleep]! ? 1 : 0,
-        'turbo': feat[Feat.turbo]! ? 1 : 0,
-        'light': feat[Feat.light]! ? 1 : 0,
-      };
+    'proto': proto.name,
+    'mode': mode.name,
+    'temp': temp,
+    'fan': fan.name,
+    'swing': feat[Feat.swing]! ? 1 : 0,
+    'sleep': feat[Feat.sleep]! ? 1 : 0,
+    'turbo': feat[Feat.turbo]! ? 1 : 0,
+    'light': feat[Feat.light]! ? 1 : 0,
+  };
 
   Map<String, Object?> _newDeviceMap(String name) => {
-        'name': name,
-        'proto': 'gree',
-        'mode': 'cool',
-        'temp': 26,
-        'fan': 'auto',
-        'swing': 0,
-        'sleep': 0,
-        'turbo': 0,
-        'light': 1,
-      };
+    'name': name,
+    'proto': 'gree',
+    'mode': 'cool',
+    'temp': 26,
+    'fan': 'auto',
+    'swing': 0,
+    'sleep': 0,
+    'turbo': 0,
+    'light': 1,
+  };
 
   /// Nạp giá trị từ một dòng CSDL vào trạng thái của app (gọi trong setState).
   void _applyMap(Map<String, Object?> m, {bool withProto = true, bool withFeat = true}) {
@@ -487,6 +513,7 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
     if (id == null) return;
     try {
       await Db.updateDevice(id, _snapshot());
+      _syncTile();
     } catch (_) {
       // Lưu thất bại không được làm hỏng việc điều khiển.
     }
@@ -551,6 +578,7 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
       powered = wasOn;
       _applyMap(d);
     });
+    _syncTile();
   }
 
   Future<String?> _askText(String title, String initial) async {
@@ -723,7 +751,7 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
       _setProto(order[i]);
       final c = _cmd(order[i], true);
       setState(() => status =
-          'Dò ${i + 1}/${order.length}: ${protoLabel[order[i]]}. Nghe thấy "bíp" thì bấm DỪNG');
+      'Dò ${i + 1}/${order.length}: ${protoLabel[order[i]]}. Nghe thấy "bíp" thì bấm DỪNG');
       try {
         await sendIr(c.pattern, freq: c.freq);
       } catch (e) {
@@ -770,76 +798,76 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
   // ---------- Giao diện ----------
 
   Widget _circle(IconData icon, VoidCallback? onTap) => Material(
-        color: Colors.white,
-        shape: const CircleBorder(),
-        elevation: 1,
-        shadowColor: Colors.black38,
-        child: InkWell(
-          customBorder: const CircleBorder(),
-          onTap: onTap,
-          child: SizedBox(
-            width: 48,
-            height: 48,
-            child: Icon(icon, color: Colors.black87),
-          ),
-        ),
-      );
+    color: Colors.white,
+    shape: const CircleBorder(),
+    elevation: 1,
+    shadowColor: Colors.black38,
+    child: InkWell(
+      customBorder: const CircleBorder(),
+      onTap: onTap,
+      child: SizedBox(
+        width: 48,
+        height: 48,
+        child: Icon(icon, color: Colors.black87),
+      ),
+    ),
+  );
 
   Widget _topBar() => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-        child: Row(
-          children: [
-            _circle(
-              showSettings ? Icons.arrow_back : Icons.ac_unit,
-              showSettings ? () => setState(() => showSettings = false) : null,
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: showSettings
-                  ? const Text(
-                      'Cài đặt',
-                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
-                    )
-                  : InkWell(
-                      onTap: _openDevices,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Row(
-                          children: [
-                            Flexible(
-                              child: Text(
-                                '$deviceName · ${protoLabel[proto]}',
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                    fontSize: 17, fontWeight: FontWeight.w600),
-                              ),
-                            ),
-                            const Icon(Icons.arrow_drop_down),
-                          ],
-                        ),
-                      ),
-                    ),
-            ),
-            _circle(Icons.info_outline,
-                () => setState(() => showSettings = !showSettings)),
-          ],
+    padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+    child: Row(
+      children: [
+        _circle(
+          showSettings ? Icons.arrow_back : Icons.ac_unit,
+          showSettings ? () => setState(() => showSettings = false) : null,
         ),
-      );
+        const SizedBox(width: 16),
+        Expanded(
+          child: showSettings
+              ? const Text(
+            'Cài đặt',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+          )
+              : InkWell(
+            onTap: _openDevices,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      '$deviceName · ${protoLabel[proto]}',
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 17, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  const Icon(Icons.arrow_drop_down),
+                ],
+              ),
+            ),
+          ),
+        ),
+        _circle(Icons.info_outline,
+                () => setState(() => showSettings = !showSettings)),
+      ],
+    ),
+  );
 
   Widget _infoItem(IconData i, String t) =>
       _infoItemW(Icon(i, size: 20, color: Colors.black54), t);
 
   Widget _infoItemW(Widget icon, String t) => Padding(
-        padding: const EdgeInsets.only(right: 18, top: 4),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            icon,
-            const SizedBox(width: 6),
-            Text(t, style: const TextStyle(fontSize: 13, color: Colors.black54)),
-          ],
-        ),
-      );
+    padding: const EdgeInsets.only(right: 18, top: 4),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        icon,
+        const SizedBox(width: 6),
+        Text(t, style: const TextStyle(fontSize: 13, color: Colors.black54)),
+      ],
+    ),
+  );
 
   Widget _display() {
     final numColor = powered ? Colors.black : Colors.black26;
@@ -903,41 +931,41 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
       Expanded(flex: flex, child: Center(child: child));
 
   Widget _tempPill() => Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            height: 72,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(36),
-              boxShadow: const [
-                BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 1)),
-              ],
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Container(
+        height: 72,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(36),
+          boxShadow: const [
+            BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 1)),
+          ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            IconButton(
+              onPressed: temp > _minTemp ? () => _change(() => temp--) : null,
+              icon: const Icon(Icons.remove),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                IconButton(
-                  onPressed: temp > _minTemp ? () => _change(() => temp--) : null,
-                  icon: const Icon(Icons.remove),
-                ),
-                const Text('°C', style: TextStyle(fontSize: 18, color: Colors.black54)),
-                IconButton(
-                  onPressed: temp < 30 ? () => _change(() => temp++) : null,
-                  icon: const Icon(Icons.add),
-                ),
-              ],
+            const Text('°C', style: TextStyle(fontSize: 18, color: Colors.black54)),
+            IconButton(
+              onPressed: temp < 30 ? () => _change(() => temp++) : null,
+              icon: const Icon(Icons.add),
             ),
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            'Nhiệt độ',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 12, color: Colors.black54),
-          ),
-        ],
-      );
+          ],
+        ),
+      ),
+      const SizedBox(height: 6),
+      const Text(
+        'Nhiệt độ',
+        textAlign: TextAlign.center,
+        style: TextStyle(fontSize: 12, color: Colors.black54),
+      ),
+    ],
+  );
 
   Widget _remote() {
     final enabled = ir == true;
@@ -1080,15 +1108,15 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
         const SizedBox(height: 12),
         probing
             ? FilledButton.icon(
-                onPressed: _stopProbe,
-                icon: const Icon(Icons.stop),
-                label: const Text('DỪNG (điều hòa vừa kêu)'),
-              )
+          onPressed: _stopProbe,
+          icon: const Icon(Icons.stop),
+          label: const Text('DỪNG (điều hòa vừa kêu)'),
+        )
             : OutlinedButton.icon(
-                onPressed: enabled ? _probe : null,
-                icon: const Icon(Icons.search),
-                label: const Text('Dò tự động giao thức'),
-              ),
+          onPressed: enabled ? _probe : null,
+          icon: const Icon(Icons.search),
+          label: const Text('Dò tự động giao thức'),
+        ),
         if (_isCoolix || _isLg) ...[
           const SizedBox(height: 24),
           const Divider(),
