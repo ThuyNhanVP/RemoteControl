@@ -12,6 +12,7 @@ Ngay sau khi hoàn thành MỖI tính năng, sửa lỗi hoặc thay đổi nào
 3. Tính năng mới xong thì chuyển khỏi mục 10 (việc còn lại) sang mục 3 (đã có).
 4. Nếu đổi cách cài hoặc cách dùng thì cập nhật luôn `README.md`. Quy chuẩn Git (nhánh, commit, PR) nằm trong README, mục "Quy chuẩn làm việc với GitHub"; sửa AGENTS.md cùng commit với mã.
 5. Giữ file ngắn: sửa tại chỗ, không chép đoạn mã dài, không lặp ý. Con số dòng trong mã dễ lệch, nên chỉ ghi tên hàm.
+6. **Không bao giờ ghi khóa API, mật khẩu hay token vào mã, README, AGENTS.md hay thông điệp commit.** Chỉ ghi tên file chứa chúng (ví dụ `lib/secrets.dart`). Trước khi commit chạy kiểm tra các chuỗi khóa trong phần sắp commit (xem README, mục "Quy chuẩn làm việc với GitHub").
 
 Không cập nhật file này coi như chưa xong việc.
 
@@ -27,19 +28,21 @@ App Flutter (Android) điều khiển điều hòa bằng đèn IR của điện
 
 | File | Việc | Hàm/lớp chính |
 |---|---|---|
-| `lib/main.dart` | Giao diện và trạng thái màn hình, nhãn tiếng Việt, gọi Kotlin | `MethodChannel('ir')`, `hasIr`, `sendIr(pattern, freq)`, `RoundBtn`, `FanIcon`, `_AcPageState` |
+| `lib/main.dart` | Giao diện và trạng thái màn hình, nhãn tiếng Việt, gọi Kotlin, nút Trợ lý AI | `MethodChannel('ir')`, `hasIr`, `sendIr(pattern, freq)`, `RoundBtn`, `FanIcon`, `_AcPageState`, `_openAiAssistant`, `_applyAiResult` |
+| `lib/ai_assistant.dart` | Trợ lý Giọng nói AI & Xử lý ngôn ngữ tự nhiên | `AiAssistantEngine`, `AiResult`, `AiAssistantSheet`, parser Local Smart NLP & Gemini API Cloud |
 | `lib/protocols.dart` | Enum `AcMode`, `AcFan`, `Feat`, `Proto`, lớp `IrCmd` và mã hóa 10 giao thức. Thuần Dart, không import Flutter | `greeState/greePattern`, `coolixFrame/coolixPattern`, `lgFrame/lgPattern`, `mideaState/Pattern`, `tclState/Pattern`, `samsungState/Extended/Pattern/Off`, `daikinState/Pattern`, `panasonicState/Pattern`, `clampInt`, `hexInt`, `hexBytes`, `coolixFeat` |
 | `lib/db.dart` | SQLite (sqflite), bản 2 | `Db.devices/addDevice/updateDevice/deleteDevice`, `presets/addPreset/deletePreset`, `getMeta/setMeta`, `onChanged`, hàm dành cho đồng bộ (`allPresets`, `pendingDeletes`, `applyRemoteDevice/Preset`, `deleteByCid`) |
 | `lib/firebase_sync.dart` | Firebase | `Cloud` (init, signIn, signOut, syncNow, `_sync`, log), `SyncCard`, `HistoryPage` |
 | `lib/weather.dart` | Thời tiết, gợi ý + nút Áp dụng | `WeatherApi.forecast/search`, `WeatherCard(onApply)`, `Place`, `Advice`, `_advice` |
 | `lib/reminder.dart` | Nhắc trước báo thức khi trời lạnh | `heatTempFor`, `planReminder` (thuần Dart, có test), `Reminder.sync` |
-| `lib/firebase_options.dart` | do `flutterfire configure` tạo, không sửa tay | |
-| `test/protocols_test.dart`, `test/reminder_test.dart` | Test mã hóa và kế hoạch nhắc | |
-| `android/.../MainActivity.kt` | Kênh `ir`: `hasIr`, `transmit(freq, pattern)`, `nextAlarm`, `scheduleReminder`, `cancelReminder`, `setTile`, `tileOn` | |
+| `lib/firebase_options.dart` | do `flutterfire configure` tạo, không sửa tay, nằm trong `.gitignore` | |
+| `lib/secrets.dart` | Hai hằng số `defaultGeminiApiKey`, `defaultOpenRouterApiKey`; **nằm trong `.gitignore`**; máy mới phải tự tạo (để chuỗi rỗng `''` nếu không có khóa) vì `main.dart` và `ai_assistant.dart` import file này | |
+| `test/protocols_test.dart`, `test/reminder_test.dart`, `test/ai_assistant_test.dart` | Test mã hóa, kế hoạch nhắc và bộ xử lý giọng nói AI | |
+| `android/.../MainActivity.kt` | Kênh `ir`: `hasIr`, `transmit(freq, pattern)`, `nextAlarm`, `scheduleReminder`, `cancelReminder`, `setTile`, `tileOn`, `startSpeech`, `stopSpeech` (SpeechRecognizer) | |
 | `android/.../IrTileService.kt` | Ô cài đặt nhanh bật/tắt điều hòa đang dùng; đọc lệnh IR đã lưu trong SharedPreferences `tile` và phát bằng Kotlin | |
 | `android/app/src/main/res/drawable/ic_tile.xml` | Biểu tượng ô cài đặt nhanh | |
 | `android/.../ReminderReceiver.kt` | Hiện thông báo khi đến giờ nhắc (kênh `remind`) | |
-| `android/app/src/main/AndroidManifest.xml` | Quyền `TRANSMIT_IR`, `INTERNET`; `android:label` là tên app; cần `POST_NOTIFICATIONS` và `<receiver android:name=".ReminderReceiver" android:exported="false"/>` và `<service android:name=".IrTileService" ...BIND_QUICK_SETTINGS_TILE>` | |
+| `android/app/src/main/AndroidManifest.xml` | Quyền `TRANSMIT_IR`, `INTERNET`, `POST_NOTIFICATIONS`, `RECORD_AUDIO`; `android:label` là tên app; `<receiver android:name=".ReminderReceiver" android:exported="false"/>` và `<service android:name=".IrTileService" ...BIND_QUICK_SETTINGS_TILE>` | |
 | `assets/icon/` | `icon.png`, `icon_foreground.png` cho `flutter_launcher_icons` | |
 
 Trong `_AcPageState` (main.dart): `_cmd(proto, on, {powerChange})` dựng lệnh theo giao thức; `_send(on)` gửi và ghi nhật ký; `_change(fn)` đổi giá trị rồi gửi ngay; `_toggleFeat`; `_setProto`; `_applyMap/_snapshot/_persist` (state <-> SQLite); `_useDevice`; `_reloadFromCloud`; `_probe/_stopProbe`; `_remote()` (màn chính), `_settings()`; getters theo giao thức: `_feats`, `_minTemp`, `_modes`, `_inFrame`, `_isLg`, `_isCoolix`.
@@ -47,6 +50,7 @@ Trong `_AcPageState` (main.dart): `_cmd(proto, on, {powerChange})` dựng lệnh
 ## 3. Tính năng đã có
 
 - Điều khiển: Nguồn, Chế độ, Nhiệt độ (16–30 trên giao diện, tối thiểu theo giao thức), Quạt, Đảo gió, Ngủ, Đèn, Turbo. Đổi bất kỳ giá trị nào là gửi ngay cả trạng thái kèm BẬT.
+- Trợ lý Giọng nói AI: nhận diện giọng nói tiếng Việt tự nhiên (Android native SpeechRecognizer + micro), xử lý bằng AI Local Parser (100% offline) hoặc Gemini / OpenRouter (nếu có khóa trong `lib/secrets.dart` hoặc nhập trong Cài đặt), tự động phân tích câu lệnh (bật/tắt, chế độ, nhiệt độ tuyệt đối/tương đối 'nóng quá/lạnh quá', tốc độ quạt, đảo gió/ngủ/turbo, đổi thiết bị, hỏi thời tiết). Có giao diện sóng âm, gợi ý câu lệnh mẫu và ô nhập văn bản.
 - Dò tự động 10 giao thức (3 giây mỗi cái, bấm DỪNG khi điều hòa bíp; dò xong không dừng thì trả về giao thức ban đầu).
 - Nhiều thiết bị (mỗi cái có giao thức, trạng thái riêng), cài sẵn, trạng thái tự lưu. Gửi mã thô hex cho Coolix và LG.
 - Đồng bộ Firebase hai chiều (thiết bị, cài sẵn), nhật ký bật/tắt, màn Lịch sử (giờ bật 7 ngày, mỗi lần bật tối đa 8 giờ vì IR một chiều).
@@ -113,7 +117,7 @@ dart pub global run flutterfire_cli:flutterfire configure   # flutterfire không
 cd android; .\gradlew.bat signingReport                      # lấy SHA-1
 ```
 
-Thư viện chính: sqflite, path, firebase_core, firebase_auth, cloud_firestore, google_sign_in, http; dev: flutter_launcher_icons.
+Thư viện chính (có thể thiếu một số gói; xem `pubspec.yaml`): sqflite, path, firebase_core, firebase_auth, cloud_firestore, google_sign_in, http; dev: flutter_launcher_icons.
 
 ## 9. Bẫy đã gặp (đừng lặp lại)
 
@@ -129,6 +133,8 @@ Thư viện chính: sqflite, path, firebase_core, firebase_auth, cloud_firestore
 - Ô cài đặt nhanh chỉ chạy được sau khi app đã mở ít nhất một lần (để lưu lệnh) và dùng thiết bị mở gần nhất; người dùng phải tự kéo ô vào bảng cài đặt nhanh. Ô và app có thể lệch trạng thái nguồn cho tới khi mở lại app.
 - Đổi `MainActivity.kt` phải **dừng hẳn rồi chạy lại** app, hot reload không nạp Kotlin. Log `tile: MissingPluginException ... setTile` nghĩa là `MainActivity.kt` trên máy chưa có đoạn `setTile`. Ô cài đặt nhanh không bao giờ ở trạng thái mờ; chưa có lệnh đã lưu thì bấm ô sẽ mở app.
 - IR một chiều: app không biết điều hòa thật đang bật hay tắt; `powered` chỉ là lệnh cuối app đã gửi.
+- Khóa API AI **không được commit**. Khóa nằm trong `lib/secrets.dart` (đã gitignore) hoặc người dùng nhập trong Cài đặt (lưu SQLite `meta`: `gemini_api_key`, `openrouter_api_key`, chỉ trên máy, không đồng bộ Firebase). Máy mới clone về phải tạo `lib/secrets.dart` với hai hằng số rỗng, nếu không build lỗi. Một AI từng ghi nguyên khóa vào nhật ký này; đừng lặp lại.
+- Nhận diện giọng nói SpeechRecognizer đòi hỏi quyền `RECORD_AUDIO` và dịch vụ Google Speech Services khả dụng trên máy; nếu máy không có Google Play Services hoặc lỗi micro thì app sẽ tự chuyển sang ô nhập chữ.
 - Icon mặc định Flutter dùng tên `Icons.toys_outlined` trông như xe đồ chơi; quạt dùng `FanIcon` tự vẽ.
 - Độ dài chuỗi xung tối đa mà bộ phát IR của máy chấp nhận chưa biết (Daikin khoảng 580 giá trị); nếu một giao thức dài không phát được, hãy nghi ngờ giới hạn này.
 
@@ -137,15 +143,19 @@ Thư viện chính: sqflite, path, firebase_core, firebase_auth, cloud_firestore
 1. Xác nhận giao thức của Casper và LG trên máy thật (kết quả dò của người dùng). Nếu không giao thức nào ăn: bắt tín hiệu remote thật bằng VS1838B + ESP32/Arduino (IRrecvDumpV2) rồi viết giao thức riêng.
 2. Điều khiển TV (hãng chưa biết); mã lấy từ IRDB (probonopd/irdb) hoặc Flipper-IRDB.
 3. Hẹn giờ (phụ thuộc giao thức đã xác nhận).
-5. Công tắc bật/tắt đồng bộ trong Cài đặt.
-6. Thông báo nhắc (FCM cần Cloud Functions gói Blaze; thay thế không cần máy chủ: `flutter_local_notifications`).
-7. Điều khiển từ xa qua internet bằng một điện thoại cũ làm "trạm" (lệnh qua Firestore).
-8. Test thêm cho Gree, Coolix, LG bằng mã mẫu thật.
+4. Công tắc bật/tắt đồng bộ trong Cài đặt.
+5. Thông báo đẩy từ xa (FCM cần Cloud Functions gói Blaze; thay thế không cần máy chủ: `flutter_local_notifications`).
+6. Điều khiển từ xa qua internet bằng một điện thoại cũ làm "trạm" (lệnh qua Firestore).
+7. Test thêm cho Gree, Coolix, LG bằng mã mẫu thật.
 
 ## 11. Nhật ký thay đổi
 
 | Ngày | Thay đổi | File |
 |---|---|---|
+| 2026-11-17 | Khóa API AI (Gemini, OpenRouter) chuyển ra `lib/secrets.dart` (nằm trong `.gitignore`, không commit); `main.dart` và `ai_assistant.dart` import file này; người dùng vẫn nhập khóa riêng trong Cài đặt | lib/secrets.dart, lib/ai_assistant.dart, lib/main.dart, .gitignore |
+| 2026-11-17 | Thêm tùy chọn dịch vụ OpenRouter AI và danh sách mô hình miễn phí (Llama 3.3 70B, DeepSeek R1, Gemini 2.0 Flash Lite, Qwen 2.5 32B, Mistral 7B) trong Cài đặt + nút test OpenRouter API Key + unit test | lib/ai_assistant.dart, lib/main.dart, test/ai_assistant_test.dart |
+| 2026-11-17 | Thêm tính năng & nút 'Kiểm tra Gemini API Key' trực tiếp trong màn hình Cài đặt (gửi test ping tới Gemini REST API) + unit test | lib/ai_assistant.dart, lib/main.dart, test/ai_assistant_test.dart |
+| 2026-11-17 | Thêm Trợ lý Giọng nói AI: nhận diện giọng nói tiếng Việt (SpeechRecognizer Android native + RECORD_AUDIO), bộ xử lý ngôn ngữ tự nhiên Local Smart NLP (nhiệt độ tuyệt đối/tương đối 'nóng quá/lạnh quá', chế độ, quạt, tính năng, đổi thiết bị, thời tiết) & tích hợp Gemini AI Cloud tùy chọn, giao diện BottomSheet có sóng âm & nhập chữ, 8 unit test; sửa nút dừng thu âm chủ động xử lý ngay văn bản thu được và phát lệnh IR | lib/ai_assistant.dart, lib/main.dart, MainActivity.kt, AndroidManifest.xml, test/ai_assistant_test.dart |
 | 2026-11-16 | Sửa ô cài đặt nhanh: không còn mờ, mở app nếu chưa có lệnh, in lỗi `tile:` ra log; đã chạy được trên máy thật (TECNO) | IrTileService.kt, main.dart |
 | 2026-11-14 | Ô cài đặt nhanh bật/tắt điều hòa (`IrTileService`, `setTile`/`tileOn`, `_syncTile`/`_adoptTile`) | main.dart, MainActivity.kt, IrTileService.kt, res/drawable/ic_tile.xml, AndroidManifest.xml |
 | 2026-11-14 | Gợi ý Sưởi khi lạnh + nút Áp dụng trên thẻ thời tiết; thông báo nhắc 20 phút trước báo thức khi trời lạnh (Kotlin `nextAlarm`/`scheduleReminder`/`ReminderReceiver`, `reminder.dart`, test) | weather.dart, main.dart, reminder.dart, MainActivity.kt, ReminderReceiver.kt, AndroidManifest.xml, test/reminder_test.dart |
