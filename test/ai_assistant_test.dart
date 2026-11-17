@@ -1,6 +1,4 @@
-import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
 import 'package:test2/ai_assistant.dart';
 import 'package:test2/protocols.dart';
 import 'package:test2/secrets.dart';
@@ -121,12 +119,13 @@ void main() {
       expect(res.response, contains('Hà Nội hiện tại: 22°C'));
     });
 
+    // Gọi mạng thật bằng khóa thật: bỏ qua khi không có khóa (ví dụ trên CI)
     test('Kiểm tra OpenRouter API thành công với openrouter/auto', () async {
       final isValid = await AiAssistantEngine.testOpenRouterApiKey(
         defaultOpenRouterApiKey,
         model: 'openrouter/auto',
       );
       expect(isValid, isTrue);
-    });
+    }, skip: defaultOpenRouterApiKey.isEmpty ? 'Cần khóa OpenRouter thật và mạng' : false);
   });
 }
