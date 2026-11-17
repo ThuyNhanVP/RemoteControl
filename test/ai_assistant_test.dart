@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:test2/ai_assistant.dart';
 import 'package:test2/protocols.dart';
+import 'package:test2/secrets.dart';
 
 void main() {
   group('AiAssistantEngine Natural Language Tests', () {
