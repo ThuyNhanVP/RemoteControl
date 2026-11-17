@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'ai_assistant.dart';
 import 'db.dart';
 import 'firebase_sync.dart';
 import 'protocols.dart';
 import 'weather.dart';
+import 'secrets.dart';
 
 // ====== Giao tiếp hồng ngoại (gọi sang Kotlin) ======
 const _ch = MethodChannel('ir');
@@ -214,6 +216,10 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
   bool probing = false;
   bool showSettings = false;
   String status = '';
+  String aiProvider = 'gemini';
+  String? geminiApiKey;
+  String? openRouterApiKey;
+  String openRouterModel = 'meta-llama/llama-3.3-70b-instruct:free';
   final hex = TextEditingController(text: 'B27BE0');
   int? deviceId; // thiết bị đang dùng (khóa trong bảng devices)
   String deviceName = 'Điều hòa';
@@ -550,6 +556,11 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
 
   Future<void> _loadDb() async {
     try {
+      final provider = await Db.getMeta('ai_provider') ?? 'gemini';
+      final gKey = await Db.getMeta('gemini_api_key');
+      final oKey = await Db.getMeta('openrouter_api_key');
+      final oModel = await Db.getMeta('openrouter_model') ?? openRouterFreeModels.first;
+
       var list = await Db.devices();
       if (list.isEmpty) {
         await Db.addDevice(_newDeviceMap('Điều hòa'));
@@ -557,9 +568,72 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
       }
       final lastId = int.tryParse(await Db.getMeta('last_device') ?? '');
       final cur = list.firstWhere((d) => d['id'] == lastId, orElse: () => list.first);
+      if (mounted) {
+        setState(() {
+          aiProvider = provider;
+          geminiApiKey = (gKey != null && gKey.isNotEmpty) ? gKey : defaultGeminiApiKey;
+          openRouterApiKey = (oKey != null && oKey.isNotEmpty) ? oKey : defaultOpenRouterApiKey;
+          openRouterModel = oModel;
+        });
+      }
       await _useDevice(cur, list: list);
     } catch (e) {
       if (mounted) setState(() => status = 'Lỗi CSDL: $e');
+    }
+  }
+
+  void _openAiAssistant() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => AiAssistantSheet(
+        currentPower: powered,
+        currentTemp: temp,
+        currentMode: mode,
+        currentFan: fan,
+        currentFeat: feat,
+        availableDevices: devices.map((d) => (d['name'] as String?) ?? 'Điều hòa').toList(),
+        currentDeviceName: deviceName,
+        minTemp: _minTemp,
+        aiProvider: aiProvider,
+        apiKey: aiProvider == 'openrouter' ? openRouterApiKey : geminiApiKey,
+        openRouterModel: openRouterModel,
+        onResultApplied: _applyAiResult,
+      ),
+    );
+  }
+
+  Future<void> _applyAiResult(AiResult res) async {
+    if (res.targetDeviceName != null) {
+      final target = devices.firstWhere(
+        (d) => (d['name'] as String).toLowerCase() == res.targetDeviceName!.toLowerCase(),
+        orElse: () => <String, Object?>{},
+      );
+      if (target.isNotEmpty) {
+        await _useDevice(target);
+      }
+    }
+
+    if (res.power != null || res.temp != null || res.mode != null || res.fan != null || res.featChanges.isNotEmpty) {
+      setState(() {
+        if (res.mode != null) mode = res.mode!;
+        if (res.fan != null) fan = res.fan!;
+        if (res.temp != null) temp = res.temp!;
+        for (final entry in res.featChanges.entries) {
+          feat[entry.key] = entry.value;
+        }
+        if (temp < _minTemp) temp = _minTemp;
+        if (temp > 30) temp = 30;
+      });
+
+      final targetPower = res.power ?? true;
+      _persist();
+      if (ir == true) {
+        await _send(targetPower);
+      } else {
+        setState(() => powered = targetPower);
+      }
     }
   }
 
@@ -797,7 +871,7 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
 
   // ---------- Giao diện ----------
 
-  Widget _circle(IconData icon, VoidCallback? onTap) => Material(
+  Widget _circle(IconData icon, VoidCallback? onTap, {Color? iconColor}) => Material(
     color: Colors.white,
     shape: const CircleBorder(),
     elevation: 1,
@@ -808,7 +882,7 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
       child: SizedBox(
         width: 48,
         height: 48,
-        child: Icon(icon, color: Colors.black87),
+        child: Icon(icon, color: iconColor ?? Colors.black87),
       ),
     ),
   );
@@ -848,6 +922,12 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
             ),
           ),
         ),
+        _circle(
+          Icons.auto_awesome,
+          _openAiAssistant,
+          iconColor: Colors.indigo,
+        ),
+        const SizedBox(width: 8),
         _circle(Icons.info_outline,
                 () => setState(() => showSettings = !showSettings)),
       ],
@@ -1137,9 +1217,149 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
             child: const Text('Gửi mã thô'),
           ),
         ],
+        const SizedBox(height: 24),
+        const Divider(),
+        const Text('Cấu hình Trợ lý AI (Tùy chọn)', style: TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 4),
+        const Text(
+          'Chọn dịch vụ AI Cloud (Gemini hoặc OpenRouter với các mô hình miễn phí):',
+          style: TextStyle(fontSize: 12, color: Colors.black54),
+        ),
+        const SizedBox(height: 10),
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(value: 'gemini', label: Text('Google Gemini')),
+            ButtonSegment(value: 'openrouter', label: Text('OpenRouter (Free)')),
+          ],
+          selected: {aiProvider},
+          onSelectionChanged: (set) {
+            final val = set.first;
+            setState(() => aiProvider = val);
+            Db.setMeta('ai_provider', val);
+          },
+        ),
+        const SizedBox(height: 14),
+        if (aiProvider == 'openrouter') ...[
+          const Text('Chọn mô hình OpenRouter Miễn Phí:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 6),
+          DropdownButtonFormField<String>(
+            initialValue: openRouterFreeModels.contains(openRouterModel) ? openRouterModel : openRouterFreeModels.first,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              filled: true,
+              fillColor: Colors.white,
+              isDense: true,
+            ),
+            items: [
+              for (final m in openRouterFreeModels)
+                DropdownMenuItem(
+                  value: m,
+                  child: Text(m.replaceAll(':free', ' (Miễn phí)'), style: const TextStyle(fontSize: 13)),
+                ),
+            ],
+            onChanged: (val) {
+              if (val != null) {
+                setState(() => openRouterModel = val);
+                Db.setMeta('openrouter_model', val);
+              }
+            },
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: TextEditingController(text: openRouterApiKey ?? ''),
+            decoration: const InputDecoration(
+              labelText: 'OpenRouter API Key',
+              hintText: 'Nhập sk-or-v1-...',
+              border: OutlineInputBorder(),
+              filled: true,
+              fillColor: Colors.white,
+              isDense: true,
+            ),
+            onChanged: (val) {
+              openRouterApiKey = val.trim();
+              Db.setMeta('openrouter_api_key', val.trim());
+            },
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _testOpenRouterApiKey,
+            icon: const Icon(Icons.verified_outlined),
+            label: const Text('Kiểm tra OpenRouter API Key'),
+          ),
+        ] else ...[
+          TextField(
+            controller: TextEditingController(text: geminiApiKey ?? ''),
+            decoration: const InputDecoration(
+              labelText: 'Gemini API Key',
+              border: OutlineInputBorder(),
+              filled: true,
+              fillColor: Colors.white,
+              isDense: true,
+            ),
+            onChanged: (val) {
+              geminiApiKey = val.trim();
+              Db.setMeta('gemini_api_key', val.trim());
+            },
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _testGeminiApiKey,
+            icon: const Icon(Icons.verified_outlined),
+            label: const Text('Kiểm tra Gemini API Key'),
+          ),
+        ],
         const SizedBox(height: 16),
         Text(status),
       ],
+    );
+  }
+
+  Future<void> _testGeminiApiKey() async {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Đang kiểm tra kết nối tới Gemini API...'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+    final isValid = await AiAssistantEngine.testApiKey(geminiApiKey ?? '');
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          isValid
+              ? '🟢 Gemini API Key hợp lệ và hoạt động tốt!'
+              : '🔴 Gemini API Key không hợp lệ hoặc lỗi kết nối mạng.',
+        ),
+        backgroundColor: isValid ? Colors.green.shade800 : Colors.red.shade800,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
+  Future<void> _testOpenRouterApiKey() async {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Đang kiểm tra kết nối tới OpenRouter...'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+    final isValid = await AiAssistantEngine.testOpenRouterApiKey(
+      openRouterApiKey ?? '',
+      model: openRouterModel,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          isValid
+              ? '🟢 OpenRouter API Key hợp lệ cho $openRouterModel!'
+              : '🔴 OpenRouter API Key không hợp lệ hoặc lỗi kết nối mạng.',
+        ),
+        backgroundColor: isValid ? Colors.green.shade800 : Colors.red.shade800,
+        duration: const Duration(seconds: 3),
+      ),
     );
   }
 

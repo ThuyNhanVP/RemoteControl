@@ -5,6 +5,7 @@
 ## Tính năng
 
 - **Điều khiển điều hòa:** Nguồn, Chế độ (Lạnh, Khô, Quạt, Tự động, Sưởi), Nhiệt độ, Quạt, Đảo gió, Ngủ, Đèn, Turbo. Nút nào giao thức không hỗ trợ thì bị làm mờ.
+- **Trợ lý Giọng nói AI:** Nói câu lệnh tiếng Việt tự nhiên ("Bật 24 độ chế độ làm lạnh", "Nóng quá hạ 2 độ", "Bật sưởi 28 độ quạt mạnh", "Tắt điều hòa"). AI Local Parser tự động nhận diện 100% offline; hỗ trợ kết nối Google Gemini AI Cloud hoặc OpenRouter với danh sách các mô hình Miễn phí (Llama 3.3 70B, DeepSeek R1, Gemini 2.0 Flash Lite, Qwen 2.5 32B, Mistral 7B).
 - **10 giao thức IR:** Gree A, Gree B, Coolix, LG1, LG2, Midea, TCL, Samsung, Daikin, Panasonic.
 - **Dò tự động giao thức:** app gửi lệnh BẬT lần lượt theo từng giao thức, bạn bấm DỪNG khi điều hòa kêu "bíp".
 - **Nhiều thiết bị, nhiều cài sẵn:** mỗi điều hòa có giao thức và trạng thái riêng. Lưu và áp dụng cài sẵn bằng một chạm. Dữ liệu lưu trong SQLite trên máy.
@@ -70,6 +71,19 @@
 
 Chưa cấu hình Firebase thì app vẫn chạy bình thường, thẻ đồng bộ chỉ báo "Firebase chưa sẵn sàng".
 
+### Khóa AI cho Trợ lý giọng nói (tùy chọn)
+
+Bộ hiểu câu lệnh chạy ngoại tuyến không cần khóa. Muốn dùng Gemini hoặc OpenRouter:
+
+1. Tạo file `lib/secrets.dart` (file này **không** được commit, nằm trong `.gitignore`):
+   ```
+   const defaultGeminiApiKey = '';
+   const defaultOpenRouterApiKey = '';
+   ```
+   File này bắt buộc phải có, vì `main.dart` và `ai_assistant.dart` import nó. Để chuỗi rỗng nếu bạn không có khóa.
+2. Dán khóa của bạn vào hai dấu nháy, hoặc nhập khóa ngay trong app: Cài đặt, ô nhập khóa. Khóa nhập trong app lưu trên máy, không đồng bộ lên Firebase.
+3. Không gửi khóa cho người khác và không ghi khóa vào README hay `AGENTS.md`.
+
 ## Cách dùng
 
 1. **Chọn thiết bị:** bấm tên điều hòa ở thanh trên để mở danh sách. Chạm vào một thiết bị để dùng, bấm dấu ba chấm cạnh nó để đổi tên hoặc xóa, bấm **Thêm thiết bị** để tạo mới.
@@ -92,12 +106,17 @@ lib/
   protocols.dart       Enum và mã hóa 10 giao thức (hàm thuần, không phụ thuộc Flutter)
   db.dart              SQLite (thiết bị, cài sẵn, meta) và dữ liệu phục vụ đồng bộ
   firebase_sync.dart   Đăng nhập, đồng bộ Firestore, nhật ký, màn Lịch sử
-  weather.dart         Thẻ thời tiết và gọi API Open-Meteo
-  firebase_options.dart  (do flutterfire tạo)
-test/protocols_test.dart   Kiểm tra mã hóa giao thức
+  weather.dart         Thẻ thời tiết, gợi ý và nút Áp dụng (API Open-Meteo)
+  reminder.dart        Nhắc trước báo thức khi trời lạnh
+  ai_assistant.dart    Trợ lý giọng nói AI: bộ hiểu câu lệnh, Gemini, OpenRouter
+  secrets.dart         Khóa AI (tự tạo, KHÔNG commit, nằm trong .gitignore)
+  firebase_options.dart  (do flutterfire tạo, không commit)
+test/                  protocols_test, reminder_test, ai_assistant_test
 android/app/src/main/
-  kotlin/.../MainActivity.kt   Phát IR qua ConsumerIrManager
-  AndroidManifest.xml          Quyền TRANSMIT_IR và INTERNET
+  kotlin/.../MainActivity.kt     Phát IR, đọc báo thức, giọng nói, lưu lệnh cho ô nhanh
+  kotlin/.../IrTileService.kt    Ô cài đặt nhanh bật/tắt điều hòa
+  kotlin/.../ReminderReceiver.kt Thông báo nhắc trước báo thức
+  AndroidManifest.xml            Quyền IR, mạng, thông báo, micro
 assets/icon/           Icon app (dùng với flutter_launcher_icons)
 AGENTS.md              Tài liệu cho AI tiếp tục dự án
 ```
@@ -142,6 +161,11 @@ Quy tắc:
 1. `flutter test` phải qua.
 2. `flutter analyze` không có lỗi mới.
 3. `git status` kiểm tra không có file lạ hoặc file bí mật.
+4. Kiểm tra khóa trong phần sắp commit, lệnh phải **không in ra gì** (trừ dòng gợi ý `sk-or-v1-...` trong ô nhập):
+   ```
+   git diff --cached | findstr /l /i "sk-or-v1 AQ. AIza"
+   ```
+   Chạy thêm một lần trên toàn bộ commit sắp push: `git log -p origin/<nhánh>..HEAD | findstr /l /i "sk-or-v1 AQ. AIza"`. Kiểm tra cả `README.md` và `AGENTS.md`, vì AI từng ghi khóa vào nhật ký. Terminal Windows có thể hiện chữ tiếng Việt thành `???`, đó chỉ là cách hiển thị.
 
 **Không đưa lên GitHub** (thêm vào `.gitignore`):
 ```
@@ -151,8 +175,9 @@ android/local.properties
 *.keystore
 android/app/google-services.json
 lib/firebase_options.dart
+lib/secrets.dart
 ```
-Hai file Firebase chứa khóa API (`AIza...`). GitHub quét thấy sẽ báo "Public leak" ở repo công khai. Bảo mật dữ liệu dựa vào quy tắc Firestore và giới hạn khóa, nhưng vẫn không đưa lên. Máy mới clone về phải chạy lại `dart pub global run flutterfire_cli:flutterfire configure` để tạo lại hai file.
+`lib/secrets.dart` chứa khóa AI. Hai file Firebase chứa khóa API (`AIza...`). GitHub quét thấy sẽ báo "Public leak" ở repo công khai. Bảo mật dữ liệu dựa vào quy tắc Firestore và giới hạn khóa, nhưng vẫn không đưa lên. Máy mới clone về phải chạy lại `dart pub global run flutterfire_cli:flutterfire configure` để tạo lại hai file.
 
 Khóa API trong Google Cloud Console (APIs and services, Identifiers) phải giới hạn: **Application restrictions** chọn Android apps (package `com.example.test2` + SHA-1), **API restrictions** chỉ giữ Identity Toolkit, Token Service, Cloud Firestore, Firebase Installations. Đổi khóa ký thì thêm SHA-1 mới.
 
@@ -202,5 +227,6 @@ Các bài test so từng byte với mã mẫu của thư viện IRremoteESP8266 
 
 ## Hạn chế và hướng phát triển
 
-- Chưa có: điều khiển TV, hẹn giờ, thông báo nhắc nhở, điều khiển từ xa qua internet.
+- Chưa có: điều khiển TV, hẹn giờ bật/tắt, thông báo đẩy từ xa, điều khiển từ xa qua internet.
+- Trợ lý giọng nói cần quyền micro và dịch vụ giọng nói của Google trên máy; mất mạng thì chỉ bộ hiểu ngoại tuyến hoạt động.
 - Dữ liệu thời tiết từ Open-Meteo là dự báo theo mô hình, không phải đo tại nhà.
