@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+# Push mới trên cùng nhánh thì hủy lần chạy cũ
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      # Ba file thật nằm trong .gitignore (khóa bí mật) nên CI dùng bản giả, chỉ để biên dịch được
+      - name: Create stub config files
+        run: |
+          cat > lib/firebase_options.dart <<'EOF2'
+          import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
+
+          class DefaultFirebaseOptions {
+            static const FirebaseOptions currentPlatform = FirebaseOptions(
+              apiKey: 'ci',
+              appId: '1:1:android:1',
+              messagingSenderId: '1',
+              projectId: 'ci',
+            );
+          }
+          EOF2
+          cat > lib/secrets.dart <<'EOF2'
+          const defaultGeminiApiKey = '';
+          const defaultOpenRouterApiKey = '';
+          EOF2
+          cat > android/app/google-services.json <<'EOF2'
+          {
+            "project_info": {"project_number": "1", "project_id": "ci"},
+            "client": [{
+              "client_info": {
+                "mobilesdk_app_id": "1:1:android:1",
+                "android_client_info": {"package_name": "com.example.test2"}
+              },
+              "api_key": [{"current_key": "ci"}]
+            }],
+            "configuration_version": "1"
+          }
+          EOF2
+
+      - run: flutter pub get
+
+      # shortcut: chỉ lỗi và cảnh báo làm CI đỏ, gợi ý (info) thì bỏ qua; siết lại bằng bỏ --no-fatal-infos
+      - run: flutter analyze --no-fatal-infos
+
+      - run: flutter test
+
+      - run: flutter build apk --debug

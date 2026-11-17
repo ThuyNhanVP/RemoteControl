@@ -43,6 +43,7 @@ App Flutter (Android) điều khiển điều hòa bằng đèn IR của điện
 | `android/app/src/main/res/drawable/ic_tile.xml` | Biểu tượng ô cài đặt nhanh | |
 | `android/.../ReminderReceiver.kt` | Hiện thông báo khi đến giờ nhắc (kênh `remind`) | |
 | `android/app/src/main/AndroidManifest.xml` | Quyền `TRANSMIT_IR`, `INTERNET`, `POST_NOTIFICATIONS`, `RECORD_AUDIO`; `android:label` là tên app; `<receiver android:name=".ReminderReceiver" android:exported="false"/>` và `<service android:name=".IrTileService" ...BIND_QUICK_SETTINGS_TILE>` | |
+| `.github/workflows/ci.yml` | CI: analyze (`--no-fatal-infos`), test, build APK debug; tự tạo bản giả của 3 file bị gitignore | |
 | `assets/icon/` | `icon.png`, `icon_foreground.png` cho `flutter_launcher_icons` | |
 
 Trong `_AcPageState` (main.dart): `_cmd(proto, on, {powerChange})` dựng lệnh theo giao thức; `_send(on)` gửi và ghi nhật ký; `_change(fn)` đổi giá trị rồi gửi ngay; `_toggleFeat`; `_setProto`; `_applyMap/_snapshot/_persist` (state <-> SQLite); `_useDevice`; `_reloadFromCloud`; `_probe/_stopProbe`; `_remote()` (màn chính), `_settings()`; getters theo giao thức: `_feats`, `_minTemp`, `_modes`, `_inFrame`, `_isLg`, `_isCoolix`.
@@ -134,6 +135,7 @@ Thư viện chính (có thể thiếu một số gói; xem `pubspec.yaml`): sqfl
 - Đổi `MainActivity.kt` phải **dừng hẳn rồi chạy lại** app, hot reload không nạp Kotlin. Log `tile: MissingPluginException ... setTile` nghĩa là `MainActivity.kt` trên máy chưa có đoạn `setTile`. Ô cài đặt nhanh không bao giờ ở trạng thái mờ; chưa có lệnh đã lưu thì bấm ô sẽ mở app.
 - IR một chiều: app không biết điều hòa thật đang bật hay tắt; `powered` chỉ là lệnh cuối app đã gửi.
 - Khóa API AI **không được commit**. Khóa nằm trong `lib/secrets.dart` (đã gitignore) hoặc người dùng nhập trong Cài đặt (lưu SQLite `meta`: `gemini_api_key`, `openrouter_api_key`, chỉ trên máy, không đồng bộ Firebase). Máy mới clone về phải tạo `lib/secrets.dart` với hai hằng số rỗng, nếu không build lỗi. Một AI từng ghi nguyên khóa vào nhật ký này; đừng lặp lại.
+- CI không có 3 file bị gitignore (`firebase_options.dart`, `google-services.json`, `secrets.dart`) nên tạo bản giả trong bước "Create stub config files" của `ci.yml`. Thêm hằng số mới vào `secrets.dart`, trường mới vào `DefaultFirebaseOptions`, hay thêm một file bí mật khác thì phải sửa bước này, nếu không CI đỏ. `flutter analyze --no-fatal-infos`: chỉ lỗi và cảnh báo làm CI đỏ.
 - Nhận diện giọng nói SpeechRecognizer đòi hỏi quyền `RECORD_AUDIO` và dịch vụ Google Speech Services khả dụng trên máy; nếu máy không có Google Play Services hoặc lỗi micro thì app sẽ tự chuyển sang ô nhập chữ.
 - Icon mặc định Flutter dùng tên `Icons.toys_outlined` trông như xe đồ chơi; quạt dùng `FanIcon` tự vẽ.
 - Độ dài chuỗi xung tối đa mà bộ phát IR của máy chấp nhận chưa biết (Daikin khoảng 580 giá trị); nếu một giao thức dài không phát được, hãy nghi ngờ giới hạn này.
@@ -152,6 +154,7 @@ Thư viện chính (có thể thiếu một số gói; xem `pubspec.yaml`): sqfl
 
 | Ngày | Thay đổi | File |
 |---|---|---|
+| 2026-11-17 | Thêm CI GitHub Actions (analyze, test, build APK debug, bản giả cho firebase_options, google-services, secrets) | .github/workflows/ci.yml, README.md, AGENTS.md |
 | 2026-11-17 | Khóa API AI (Gemini, OpenRouter) chuyển ra `lib/secrets.dart` (nằm trong `.gitignore`, không commit); `main.dart` và `ai_assistant.dart` import file này; người dùng vẫn nhập khóa riêng trong Cài đặt | lib/secrets.dart, lib/ai_assistant.dart, lib/main.dart, .gitignore |
 | 2026-11-17 | Thêm tùy chọn dịch vụ OpenRouter AI và danh sách mô hình miễn phí (Llama 3.3 70B, DeepSeek R1, Gemini 2.0 Flash Lite, Qwen 2.5 32B, Mistral 7B) trong Cài đặt + nút test OpenRouter API Key + unit test | lib/ai_assistant.dart, lib/main.dart, test/ai_assistant_test.dart |
 | 2026-11-17 | Thêm tính năng & nút 'Kiểm tra Gemini API Key' trực tiếp trong màn hình Cài đặt (gửi test ping tới Gemini REST API) + unit test | lib/ai_assistant.dart, lib/main.dart, test/ai_assistant_test.dart |

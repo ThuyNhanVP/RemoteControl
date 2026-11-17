@@ -1,5 +1,7 @@
 # Remote điều hòa (Flutter + hồng ngoại)
 
+![CI](https://github.com/ThuyNhanVP/RemoteControl/actions/workflows/ci.yml/badge.svg)
+
 Ứng dụng Android điều khiển điều hòa bằng **đèn hồng ngoại (IR) có sẵn trên điện thoại**. Làm cho dùng cá nhân, thử trên TECNO Camon 40 (Android 16). Hỗ trợ nhiều giao thức vì cùng một hãng, thậm chí cùng một model, có máy ăn giao thức này, có máy ăn giao thức khác.
 
 ## Tính năng
@@ -119,6 +121,7 @@ android/app/src/main/
   AndroidManifest.xml            Quyền IR, mạng, thông báo, micro
 assets/icon/           Icon app (dùng với flutter_launcher_icons)
 AGENTS.md              Tài liệu cho AI tiếp tục dự án
+.github/workflows/ci.yml   CI: analyze, test, build APK debug
 ```
 
 ## Quy chuẩn làm việc với GitHub
@@ -192,6 +195,10 @@ git commit -m "feat: mô tả"
 git push -u origin feat/ten-viec
 ```
 Mở Pull Request vào `main`, mô tả: làm gì, đã test thế nào (máy nào, giao thức nào), ảnh chụp nếu đổi giao diện. Tự xem lại phần thay đổi trước khi merge, dùng **Squash and merge** để lịch sử gọn. Merge xong xóa nhánh.
+
+**CI (GitHub Actions)**
+
+File `.github/workflows/ci.yml` tự chạy khi push lên `main`, `develop` và khi mở Pull Request vào `main` hoặc `develop`: `flutter pub get`, `flutter analyze`, `flutter test`, `flutter build apk --debug`. Ba file nằm trong `.gitignore` (`lib/firebase_options.dart`, `android/app/google-services.json`, `lib/secrets.dart`) không có trên GitHub, nên CI tự tạo bản giả để biên dịch được. Vì vậy CI chỉ kiểm tra biên dịch và test, không thử được đăng nhập, đồng bộ hay AI. Chỉ merge Pull Request khi dấu CI xanh. Xem kết quả ở tab **Actions**.
 
 **Phiên bản**
 - Đánh tag khi có mốc dùng được: `git tag v0.3.0` rồi `git push --tags`. Số phiên bản trong `pubspec.yaml` (`version:`) phải khớp.
