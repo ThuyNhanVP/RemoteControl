@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import 'db.dart';
+import 'protocols.dart';
+import 'reminder.dart';
 
 /// Một địa điểm (thành phố) để xem thời tiết.
 class Place {
@@ -37,6 +39,7 @@ class WeatherApi {
       'longitude': p.lon.toString(),
       'current': 'temperature_2m,relative_humidity_2m,apparent_temperature,weather_code',
       'daily': 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max',
+      'hourly': 'apparent_temperature', // dùng cho nhắc trước báo thức
       'timezone': 'auto',
       'forecast_days': '5',
     });
@@ -100,18 +103,40 @@ IconData _iconFor(int c) {
   return Icons.cloud_outlined;
 }
 
+/// Gợi ý cài điều hòa; [mode] null nghĩa là không có gì để áp dụng.
+class Advice {
+  final String text;
+  final AcMode? mode;
+  final int temp;
+  final String label;
+  const Advice(this.text, [this.mode, this.temp = 0, this.label = '']);
+}
+
 /// Gợi ý cài điều hòa theo nhiệt độ cảm nhận và độ ẩm.
-String _advice(double feels, int humidity) {
-  if (feels >= 35) return 'Rất nóng: nên đặt Lạnh 24–25°C, quạt vừa hoặc tự động.';
+Advice _advice(double feels, int humidity) {
+  final heat = heatTempFor(feels);
+  if (heat != null) {
+    return Advice(
+        feels <= 17 ? 'Rất lạnh: nên bật Sưởi $heat°C.' : 'Trời lạnh: nên bật Sưởi $heat°C.',
+        AcMode.heat, heat, 'Sưởi $heat°C');
+  }
+  if (feels >= 35) {
+    return const Advice('Rất nóng: nên đặt Lạnh 24–25°C, quạt vừa hoặc tự động.',
+        AcMode.cool, 24, 'Lạnh 24°C');
+  }
   if (feels >= 30) {
-    if (humidity >= 80) return 'Nóng ẩm: thử chế độ Khô hoặc Lạnh 26°C.';
-    return 'Nóng: nên đặt Lạnh 25–26°C.';
+    if (humidity >= 80) {
+      return const Advice('Nóng ẩm: thử chế độ Khô hoặc Lạnh 26°C.', AcMode.dry, 26, 'Khô 26°C');
+    }
+    return const Advice('Nóng: nên đặt Lạnh 25–26°C.', AcMode.cool, 25, 'Lạnh 25°C');
   }
   if (feels >= 26) {
-    if (humidity >= 80) return 'Hơi oi: chế độ Khô sẽ dễ chịu hơn.';
-    return 'Khá dễ chịu: Lạnh 26–27°C hoặc quạt là đủ.';
+    if (humidity >= 80) {
+      return const Advice('Hơi oi: chế độ Khô sẽ dễ chịu hơn.', AcMode.dry, 26, 'Khô 26°C');
+    }
+    return const Advice('Khá dễ chịu: Lạnh 26–27°C hoặc quạt là đủ.', AcMode.cool, 27, 'Lạnh 27°C');
   }
-  return 'Trời mát, thường không cần bật điều hòa.';
+  return const Advice('Trời mát, thường không cần bật điều hòa.');
 }
 
 String _dayLabel(String iso, int i) {
@@ -124,7 +149,9 @@ String _dayLabel(String iso, int i) {
 
 /// Thẻ thời tiết đặt ở đầu màn điều khiển.
 class WeatherCard extends StatefulWidget {
-  const WeatherCard({super.key});
+  /// Gọi khi bấm "Áp dụng" trên gợi ý.
+  final void Function(AcMode mode, int temp)? onApply;
+  const WeatherCard({super.key, this.onApply});
 
   @override
   State<WeatherCard> createState() => _WeatherCardState();
@@ -154,6 +181,7 @@ class _WeatherCardState extends State<WeatherCard> {
           DateTime.now().millisecondsSinceEpoch - at < const Duration(minutes: 30).inMilliseconds;
     } catch (_) {}
     if (mounted) setState(() {});
+    if (data != null) Reminder.sync(data!);
     if (!fresh) await _refresh();
   }
 
@@ -169,6 +197,7 @@ class _WeatherCardState extends State<WeatherCard> {
       await Db.setMeta('weather_at', DateTime.now().millisecondsSinceEpoch.toString());
       if (!mounted) return;
       setState(() => data = d);
+      Reminder.sync(d);
     } catch (_) {
       if (mounted) {
         setState(() => error = data == null
@@ -321,6 +350,7 @@ class _WeatherCardState extends State<WeatherCard> {
     final maxs = daily['temperature_2m_max'] as List;
     final mins = daily['temperature_2m_min'] as List;
     final rain = daily['precipitation_probability_max'] as List;
+    final adv = _advice(feels, hum);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -348,7 +378,20 @@ class _WeatherCardState extends State<WeatherCard> {
             color: Colors.blue.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Text(_advice(feels, hum), style: const TextStyle(fontSize: 13)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(adv.text, style: const TextStyle(fontSize: 13)),
+              if (adv.mode != null && widget.onApply != null)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => widget.onApply!(adv.mode!, adv.temp),
+                    child: Text('Áp dụng: ${adv.label}'),
+                  ),
+                ),
+            ],
+          ),
         ),
         const SizedBox(height: 10),
         Row(
