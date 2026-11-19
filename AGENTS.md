@@ -31,7 +31,8 @@ App Flutter (Android) điều khiển điều hòa bằng đèn IR của điện
 | `lib/main.dart` | Giao diện và trạng thái màn hình, nhãn tiếng Việt, gọi Kotlin, nút Trợ lý AI | `MethodChannel('ir')`, `hasIr`, `sendIr(pattern, freq)`, `RoundBtn`, `FanIcon`, `_AcPageState`, `_openAiAssistant`, `_applyAiResult` |
 | `lib/ai_assistant.dart` | Trợ lý Giọng nói AI & Xử lý ngôn ngữ tự nhiên | `AiAssistantEngine`, `AiResult`, `AiAssistantSheet`, parser Local Smart NLP & Gemini API Cloud |
 | `lib/protocols.dart` | Enum `AcMode`, `AcFan`, `Feat`, `Proto`, lớp `IrCmd` và mã hóa 10 giao thức. Thuần Dart, không import Flutter | `greeState/greePattern`, `coolixFrame/coolixPattern`, `lgFrame/lgPattern`, `mideaState/Pattern`, `tclState/Pattern`, `samsungState/Extended/Pattern/Off`, `daikinState/Pattern`, `panasonicState/Pattern`, `clampInt`, `hexInt`, `hexBytes`, `coolixFeat` |
-| `lib/db.dart` | SQLite (sqflite), bản 2 | `Db.devices/addDevice/updateDevice/deleteDevice`, `presets/addPreset/deletePreset`, `getMeta/setMeta`, `onChanged`, hàm dành cho đồng bộ (`allPresets`, `pendingDeletes`, `applyRemoteDevice/Preset`, `deleteByCid`) |
+| `lib/hub.dart` | Màn hình chính kéo thả (`HubPage`), hoạt ảnh sóng và nhịp tim, `defaultSpot`, `wavePush`, `heartBeat`, `kindIcon`; chỉ thiết bị có meta `last_ctrl` (đặt trong `_send` của main.dart) được nối với nút giữa | `HubPage`, `_Orb`, `_LinkPainter` |
+| `lib/db.dart` | SQLite (sqflite), bản 3 | `Db.devices/addDevice/updateDevice/deleteDevice`, `presets/addPreset/deletePreset`, `getMeta/setMeta`, `onChanged`, hàm dành cho đồng bộ (`allPresets`, `pendingDeletes`, `applyRemoteDevice/Preset`, `deleteByCid`) |
 | `lib/firebase_sync.dart` | Firebase | `Cloud` (init, signIn, signOut, syncNow, `_sync`, log), `SyncCard`, `HistoryPage` |
 | `lib/weather.dart` | Thời tiết, gợi ý + nút Áp dụng | `WeatherApi.forecast/search`, `WeatherCard(onApply)`, `Place`, `Advice`, `_advice` |
 | `lib/reminder.dart` | Nhắc trước báo thức khi trời lạnh | `heatTempFor`, `planReminder` (thuần Dart, có test), `Reminder.sync` |
@@ -86,13 +87,15 @@ Mức kiểm chứng: Midea, TCL, Samsung khớp từng byte với mã mẫu c�
 4. Thêm test có mã mẫu thật vào `test/protocols_test.dart`.
 5. Cập nhật bảng này và README.
 
-## 5. Dữ liệu cục bộ (SQLite `remote.db`, phiên bản 2)
+## 5. Dữ liệu cục bộ (SQLite `remote.db`, phiên bản 3)
 
 - `devices(id, name, proto, mode, temp, fan, swing, sleep, turbo, light, cid, updated)`
 - `presets(id, device_id, name, mode, temp, fan, swing, sleep, turbo, light, cid, device_cid, updated)`
 - `meta(k, v)`; khóa dùng: `last_device`, `powered_<id>` (trạng thái bật/tắt cuối của từng thiết bị, chỉ trên máy), `weather_place`, `weather_cache`, `weather_at`.
 - `pending_del(cid, kind, updated)`: các mục đã xóa nhưng chưa báo lên Firestore.
 - `cid` là mã dùng chung giữa các máy; `updated` là mili giây. Sửa qua `Db.*` để `updated` và `onChanged` được cập nhật. Đổi cấu trúc bảng thì tăng `version` và viết `onUpgrade`, không phá dữ liệu cũ.
+
+Bản 3: bảng `devices` thêm `kind` (mặc định `'ac'`, sau này `'tv'`), `px`, `py` (vị trí kéo thả trên hub, 0 đến 1). `px`/`py` chỉ ở máy, không đồng bộ (`Db.setPos` không đổi `updated`); thiết bị tạo từ máy khác có `px`/`py` null nên hub xếp theo `defaultSpot`. `kind` chưa được đồng bộ (làm ở giai đoạn TV).
 
 ## 6. Firebase
 
@@ -144,7 +147,7 @@ Thư viện chính (có thể thiếu một số gói; xem `pubspec.yaml`): sqfl
 ## 10. Việc còn lại (theo thứ tự gợi ý)
 
 1. Xác nhận giao thức của Casper và LG trên máy thật (kết quả dò của người dùng). Nếu không giao thức nào ăn: bắt tín hiệu remote thật bằng VS1838B + ESP32/Arduino (IRrecvDumpV2) rồi viết giao thức riêng.
-2. Điều khiển TV (hãng chưa biết); mã lấy từ IRDB (probonopd/irdb) hoặc Flipper-IRDB.
+2. Điều khiển TV, bắt đầu với LG và Toshiba (giao diện hub đã xong, mục TV trong menu thêm đang bị khóa); mã lấy từ IRDB (probonopd/irdb) hoặc Flipper-IRDB. Cần enum/bộ mã hóa riêng, không chèn vào `Proto` của điều hòa; đồng bộ thêm `kind`; trang điều khiển TV.
 3. Hẹn giờ (phụ thuộc giao thức đã xác nhận).
 4. Công tắc bật/tắt đồng bộ trong Cài đặt.
 5. Thông báo đẩy từ xa (FCM cần Cloud Functions gói Blaze; thay thế không cần máy chủ: `flutter_local_notifications`).
@@ -155,6 +158,7 @@ Thư viện chính (có thể thiếu một số gói; xem `pubspec.yaml`): sqfl
 
 | Ngày | Thay đổi | File |
 |---|---|---|
+| 2026-11-19 | Màn hình chính kiểu smart home kéo thả (`HubPage`), `AcPage` nhận `deviceId`, SQLite lên bản 3 (`kind`, `px`, `py`), `Db.setPos`, `newAcDevice`, hoạt ảnh sóng/nhịp tim, đường nối tới thiết bị điều khiển gần nhất (meta `last_ctrl`), test `defaultSpot`/`wavePush`/`heartBeat` | lib/hub.dart, lib/db.dart, lib/main.dart, test/hub_test.dart, README.md, AGENTS.md |
 | 2026-11-17 | CI chạy xanh: nâng Android Gradle Plugin 9.1.0 lên 9.1.1 (Flutter stable mới đòi tối thiểu 9.1.1); xóa 2 import thừa và bỏ qua bài test gọi OpenRouter thật khi không có khóa (`skip`) | android/settings.gradle.kts, test/ai_assistant_test.dart |
 | 2026-11-17 | Thêm CI GitHub Actions (analyze, test, build APK debug, bản giả cho firebase_options, google-services, secrets) | .github/workflows/ci.yml, README.md, AGENTS.md |
 | 2026-11-17 | Khóa API AI (Gemini, OpenRouter) chuyển ra `lib/secrets.dart` (nằm trong `.gitignore`, không commit); `main.dart` và `ai_assistant.dart` import file này; người dùng vẫn nhập khóa riêng trong Cài đặt | lib/secrets.dart, lib/ai_assistant.dart, lib/main.dart, .gitignore |
