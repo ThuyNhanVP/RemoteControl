@@ -7,6 +7,19 @@ import 'package:sqflite/sqflite.dart';
 String newCid() =>
     '${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}${Random().nextInt(1 << 30).toRadixString(36)}';
 
+/// Dòng thiết bị điều hòa mới với giá trị mặc định.
+Map<String, Object?> newAcDevice(String name) => {
+      'name': name,
+      'proto': 'gree',
+      'mode': 'cool',
+      'temp': 26,
+      'fan': 'auto',
+      'swing': 0,
+      'sleep': 0,
+      'turbo': 0,
+      'light': 1,
+    };
+
 int _now() => DateTime.now().millisecondsSinceEpoch;
 
 int _int(Object? v, int fallback) => v is num ? v.toInt() : fallback;
@@ -19,6 +32,8 @@ int _int(Object? v, int fallback) => v is num ? v.toInt() : fallback;
 ///  - meta:        cặp khóa/giá trị nhỏ (ví dụ thiết bị dùng lần cuối).
 ///  - pending_del: các mục đã xóa nhưng chưa báo lên đám mây.
 ///
+/// Phiên bản 3 thêm cột kind (loại thiết bị: ac, tv), px và py (vị trí kéo thả trên màn hình chính,
+/// tỉ lệ 0 đến 1, chỉ lưu trên máy).
 /// Phiên bản 2 thêm cột cid (mã dùng chung) và updated (thời điểm sửa, mili giây)
 /// để đồng bộ Firebase. Mọi thay đổi do người dùng gọi [onChanged] để lên lịch đồng bộ.
 class Db {
@@ -32,7 +47,7 @@ class Db {
   static Future<Database> _open() async {
     return openDatabase(
       join(await getDatabasesPath(), 'remote.db'),
-      version: 2,
+      version: 3,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE devices(
@@ -47,7 +62,10 @@ class Db {
             turbo INTEGER NOT NULL DEFAULT 0,
             light INTEGER NOT NULL DEFAULT 1,
             cid TEXT,
-            updated INTEGER NOT NULL DEFAULT 0
+            updated INTEGER NOT NULL DEFAULT 0,
+            kind TEXT NOT NULL DEFAULT 'ac',
+            px REAL,
+            py REAL
           )''');
         await db.execute('''
           CREATE TABLE presets(
@@ -73,6 +91,11 @@ class Db {
         await _createPending(db);
       },
       onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 3) {
+          await db.execute("ALTER TABLE devices ADD COLUMN kind TEXT NOT NULL DEFAULT 'ac'");
+          await db.execute('ALTER TABLE devices ADD COLUMN px REAL');
+          await db.execute('ALTER TABLE devices ADD COLUMN py REAL');
+        }
         if (oldVersion < 2) {
           await db.execute('ALTER TABLE devices ADD COLUMN cid TEXT');
           await db.execute('ALTER TABLE devices ADD COLUMN updated INTEGER NOT NULL DEFAULT 0');
@@ -129,6 +152,10 @@ class Db {
         where: 'id = ?', whereArgs: [id]);
     onChanged?.call();
   }
+
+  /// Lưu vị trí kéo thả (không đổi "updated", không đồng bộ vì mỗi màn hình một kích thước).
+  static Future<void> setPos(int id, double x, double y) async =>
+      (await _database).update('devices', {'px': x, 'py': y}, where: 'id = ?', whereArgs: [id]);
 
   /// Xóa thiết bị cùng toàn bộ cài sẵn của nó.
   static Future<void> deleteDevice(int id) async {

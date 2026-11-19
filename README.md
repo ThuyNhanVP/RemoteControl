@@ -6,6 +6,7 @@
 
 ## Tính năng
 
+- **Màn hình chính kiểu smart home:** các thiết bị là hình tròn quanh nút điện thoại ở giữa. Nút giữa đập như nhịp tim và phát sóng; thiết bị bị sóng đẩy nhẹ khi sóng tới. Chỉ thiết bị vừa được điều khiển có đường nối và cung màu đồng hướng vào nút giữa. Kéo để đặt vị trí (nhớ trên máy), chạm để mở điều khiển, giữ lâu để đổi tên hoặc xóa, menu ba chấm để thêm. Hiện chỉ có điều hòa; TV (LG, Toshiba) sắp có.
 - **Điều khiển điều hòa:** Nguồn, Chế độ (Lạnh, Khô, Quạt, Tự động, Sưởi), Nhiệt độ, Quạt, Đảo gió, Ngủ, Đèn, Turbo. Nút nào giao thức không hỗ trợ thì bị làm mờ.
 - **Trợ lý Giọng nói AI:** Nói câu lệnh tiếng Việt tự nhiên ("Bật 24 độ chế độ làm lạnh", "Nóng quá hạ 2 độ", "Bật sưởi 28 độ quạt mạnh", "Tắt điều hòa"). AI Local Parser tự động nhận diện 100% offline; hỗ trợ kết nối Google Gemini AI Cloud hoặc OpenRouter với danh sách các mô hình Miễn phí (Llama 3.3 70B, DeepSeek R1, Gemini 2.0 Flash Lite, Qwen 2.5 32B, Mistral 7B).
 - **10 giao thức IR:** Gree A, Gree B, Coolix, LG1, LG2, Midea, TCL, Samsung, Daikin, Panasonic.
@@ -104,7 +105,8 @@ Lưu ý: IR chỉ truyền một chiều, app không biết điều hòa thật 
 
 ```
 lib/
-  main.dart            Giao diện, trạng thái màn hình, gọi sang Kotlin
+  main.dart            Màn điều khiển điều hòa (AcPage), trạng thái màn hình, gọi sang Kotlin
+  hub.dart             Màn hình chính kéo thả (HubPage), vị trí mặc định quanh tâm
   protocols.dart       Enum và mã hóa 10 giao thức (hàm thuần, không phụ thuộc Flutter)
   db.dart              SQLite (thiết bị, cài sẵn, meta) và dữ liệu phục vụ đồng bộ
   firebase_sync.dart   Đăng nhập, đồng bộ Firestore, nhật ký, màn Lịch sử
