@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'ai_assistant.dart';
 import 'db.dart';
 import 'firebase_sync.dart';
+import 'hub.dart';
 import 'protocols.dart';
 import 'weather.dart';
 import 'secrets.dart';
@@ -92,7 +93,7 @@ class MyApp extends StatelessWidget {
       useMaterial3: true,
       scaffoldBackgroundColor: const Color(0xFFF4F4F6),
     ),
-    home: const AcPage(),
+    home: const HubPage(),
   );
 }
 
@@ -194,7 +195,9 @@ class RoundBtn extends StatelessWidget {
 }
 
 class AcPage extends StatefulWidget {
-  const AcPage({super.key});
+  /// Thiết bị cần mở; null thì mở thiết bị dùng gần nhất.
+  final int? deviceId;
+  const AcPage({super.key, this.deviceId});
 
   @override
   State<AcPage> createState() => _AcPageState();
@@ -404,7 +407,10 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
     final powerChange = on != powered; // Samsung cần khung riêng khi đổi nguồn
     setState(() => powered = on);
     final id = deviceId;
-    if (id != null) Db.setMeta('powered_$id', on ? '1' : '0');
+    if (id != null) {
+      Db.setMeta('powered_$id', on ? '1' : '0');
+      Db.setMeta('last_ctrl', '$id'); // hub chỉ nối đường tới thiết bị này
+    }
     _syncTile();
     if (powerChange) {
       Cloud.log(on ? 'on' : 'off',
@@ -484,17 +490,7 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
     'light': feat[Feat.light]! ? 1 : 0,
   };
 
-  Map<String, Object?> _newDeviceMap(String name) => {
-    'name': name,
-    'proto': 'gree',
-    'mode': 'cool',
-    'temp': 26,
-    'fan': 'auto',
-    'swing': 0,
-    'sleep': 0,
-    'turbo': 0,
-    'light': 1,
-  };
+  Map<String, Object?> _newDeviceMap(String name) => newAcDevice(name);
 
   /// Nạp giá trị từ một dòng CSDL vào trạng thái của app (gọi trong setState).
   void _applyMap(Map<String, Object?> m, {bool withProto = true, bool withFeat = true}) {
@@ -566,7 +562,7 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
         await Db.addDevice(_newDeviceMap('Điều hòa'));
         list = await Db.devices();
       }
-      final lastId = int.tryParse(await Db.getMeta('last_device') ?? '');
+      final lastId = widget.deviceId ?? int.tryParse(await Db.getMeta('last_device') ?? '');
       final cur = list.firstWhere((d) => d['id'] == lastId, orElse: () => list.first);
       if (mounted) {
         setState(() {
@@ -607,7 +603,7 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
   Future<void> _applyAiResult(AiResult res) async {
     if (res.targetDeviceName != null) {
       final target = devices.firstWhere(
-        (d) => (d['name'] as String).toLowerCase() == res.targetDeviceName!.toLowerCase(),
+            (d) => (d['name'] as String).toLowerCase() == res.targetDeviceName!.toLowerCase(),
         orElse: () => <String, Object?>{},
       );
       if (target.isNotEmpty) {
@@ -892,8 +888,10 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
     child: Row(
       children: [
         _circle(
-          showSettings ? Icons.arrow_back : Icons.ac_unit,
-          showSettings ? () => setState(() => showSettings = false) : null,
+          Icons.arrow_back,
+          showSettings
+              ? () => setState(() => showSettings = false)
+              : () => Navigator.of(context).maybePop(),
         ),
         const SizedBox(width: 16),
         Expanded(
