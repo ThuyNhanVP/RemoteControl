@@ -31,6 +31,7 @@ App Flutter (Android) điều khiển điều hòa bằng đèn IR của điện
 | `lib/main.dart` | Giao diện và trạng thái màn hình, nhãn tiếng Việt, gọi Kotlin, nút Trợ lý AI | `MethodChannel('ir')`, `hasIr`, `sendIr(pattern, freq)`, `RoundBtn`, `FanIcon`, `_AcPageState`, `_openAiAssistant`, `_applyAiResult` |
 | `lib/ai_assistant.dart` | Trợ lý Giọng nói AI & Xử lý ngôn ngữ tự nhiên | `AiAssistantEngine`, `AiResult`, `AiAssistantSheet`, parser Local Smart NLP & Gemini API Cloud |
 | `lib/protocols.dart` | Enum `AcMode`, `AcFan`, `Feat`, `Proto`, lớp `IrCmd` và mã hóa 10 giao thức. Thuần Dart, không import Flutter | `greeState/greePattern`, `coolixFrame/coolixPattern`, `lgFrame/lgPattern`, `mideaState/Pattern`, `tclState/Pattern`, `samsungState/Extended/Pattern/Off`, `daikinState/Pattern`, `panasonicState/Pattern`, `clampInt`, `hexInt`, `hexBytes`, `coolixFeat` |
+| `lib/tv.dart` | `TvBrand`, `TvKey`, bảng mã NEC1 (địa chỉ + lệnh) của LG và Toshiba lấy từ IRDB, `necPattern` (khung NEC 38 kHz, bit thấp trước), `tvPattern`, `TvPage` (gửi qua `sendIr` của main.dart, đặt meta `last_ctrl`). Thêm hãng: thêm vào `TvBrand` và `_codes`, đủ mọi `TvKey` (test kiểm tra). Phím mũi tên của Toshiba trùng mã Vol/Ch như remote thật | `necPattern`, `tvPattern`, `TvPage` |
 | `lib/hub.dart` | Màn hình chính kéo thả (`HubPage`), hoạt ảnh sóng và nhịp tim, `defaultSpot`, `wavePush`, `heartBeat`, `kindIcon`; chỉ thiết bị có meta `last_ctrl` (đặt trong `_send` của main.dart) được nối với nút giữa | `HubPage`, `_Orb`, `_LinkPainter` |
 | `lib/db.dart` | SQLite (sqflite), bản 3 | `Db.devices/addDevice/updateDevice/deleteDevice`, `presets/addPreset/deletePreset`, `getMeta/setMeta`, `onChanged`, hàm dành cho đồng bộ (`allPresets`, `pendingDeletes`, `applyRemoteDevice/Preset`, `deleteByCid`) |
 | `lib/firebase_sync.dart` | Firebase | `Cloud` (init, signIn, signOut, syncNow, `_sync`, log), `SyncCard`, `HistoryPage` |
@@ -95,7 +96,7 @@ Mức kiểm chứng: Midea, TCL, Samsung khớp từng byte với mã mẫu c�
 - `pending_del(cid, kind, updated)`: các mục đã xóa nhưng chưa báo lên Firestore.
 - `cid` là mã dùng chung giữa các máy; `updated` là mili giây. Sửa qua `Db.*` để `updated` và `onChanged` được cập nhật. Đổi cấu trúc bảng thì tăng `version` và viết `onUpgrade`, không phá dữ liệu cũ.
 
-Bản 3: bảng `devices` thêm `kind` (mặc định `'ac'`, sau này `'tv'`), `px`, `py` (vị trí kéo thả trên hub, 0 đến 1). `px`/`py` chỉ ở máy, không đồng bộ (`Db.setPos` không đổi `updated`); thiết bị tạo từ máy khác có `px`/`py` null nên hub xếp theo `defaultSpot`. `kind` chưa được đồng bộ (làm ở giai đoạn TV).
+Bản 3: bảng `devices` thêm `kind` (mặc định `'ac'`, sau này `'tv'`), `px`, `py` (vị trí kéo thả trên hub, 0 đến 1). `px`/`py` chỉ ở máy, không đồng bộ (`Db.setPos` không đổi `updated`); thiết bị tạo từ máy khác có `px`/`py` null nên hub xếp theo `defaultSpot`. `kind` được đồng bộ (`_devDoc`, `applyRemoteDevice`; tài liệu cũ không có `kind` thì coi là `'ac'`). Thiết bị TV (`kind='tv'`) lưu hãng ở cột `proto` (`'lg'`, `'toshiba'`), các cột điều hòa giữ mặc định. `Db.devices(kind: 'ac')` lọc riêng điều hòa: mọi chỗ trong `AcPage` phải dùng bản lọc này, nếu không thiết bị TV lọt vào danh sách điều hòa.
 
 ## 6. Firebase
 
@@ -147,7 +148,7 @@ Thư viện chính (có thể thiếu một số gói; xem `pubspec.yaml`): sqfl
 ## 10. Việc còn lại (theo thứ tự gợi ý)
 
 1. Xác nhận giao thức của Casper và LG trên máy thật (kết quả dò của người dùng). Nếu không giao thức nào ăn: bắt tín hiệu remote thật bằng VS1838B + ESP32/Arduino (IRrecvDumpV2) rồi viết giao thức riêng.
-2. Điều khiển TV, bắt đầu với LG và Toshiba (giao diện hub đã xong, mục TV trong menu thêm đang bị khóa); mã lấy từ IRDB (probonopd/irdb) hoặc Flipper-IRDB. Cần enum/bộ mã hóa riêng, không chèn vào `Proto` của điều hòa; đồng bộ thêm `kind`; trang điều khiển TV.
+2. TV: LG và Toshiba đã có (`tv.dart`) nhưng chưa thử trên TV thật; nếu một đời TV không ăn thì thử mã khác trong IRDB cùng hãng hoặc bắt mã bằng VS1838B. Còn lại: thêm hãng (Samsung, Sony, Panasonic cần giao thức khác NEC), nhấn giữ để lặp phím âm lượng, TV có Wi-Fi.
 3. Hẹn giờ (phụ thuộc giao thức đã xác nhận).
 4. Công tắc bật/tắt đồng bộ trong Cài đặt.
 5. Thông báo đẩy từ xa (FCM cần Cloud Functions gói Blaze; thay thế không cần máy chủ: `flutter_local_notifications`).
@@ -158,6 +159,7 @@ Thư viện chính (có thể thiếu một số gói; xem `pubspec.yaml`): sqfl
 
 | Ngày | Thay đổi | File |
 |---|---|---|
+| 2026-11-21 | Điều khiển TV LG và Toshiba (mã NEC1 từ IRDB), trang `TvPage`, thêm TV từ hub, đồng bộ `kind`, `Db.devices(kind:)`, test mã NEC | lib/tv.dart, lib/hub.dart, lib/db.dart, lib/firebase_sync.dart, lib/main.dart, test/tv_test.dart, README.md, AGENTS.md |
 | 2026-11-19 | Màn hình chính kiểu smart home kéo thả (`HubPage`), `AcPage` nhận `deviceId`, SQLite lên bản 3 (`kind`, `px`, `py`), `Db.setPos`, `newAcDevice`, hoạt ảnh sóng/nhịp tim, đường nối tới thiết bị điều khiển gần nhất (meta `last_ctrl`), test `defaultSpot`/`wavePush`/`heartBeat` | lib/hub.dart, lib/db.dart, lib/main.dart, test/hub_test.dart, README.md, AGENTS.md |
 | 2026-11-17 | CI chạy xanh: nâng Android Gradle Plugin 9.1.0 lên 9.1.1 (Flutter stable mới đòi tối thiểu 9.1.1); xóa 2 import thừa và bỏ qua bài test gọi OpenRouter thật khi không có khóa (`skip`) | android/settings.gradle.kts, test/ai_assistant_test.dart |
 | 2026-11-17 | Thêm CI GitHub Actions (analyze, test, build APK debug, bản giả cho firebase_options, google-services, secrets) | .github/workflows/ci.yml, README.md, AGENTS.md |
