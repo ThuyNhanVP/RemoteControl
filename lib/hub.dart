@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'db.dart';
 import 'firebase_sync.dart';
 import 'main.dart';
+import 'tv.dart';
 
 const _copper = Color(0xFFC9803F);
 const _nodeY = 0.40; // nút điện thoại nằm hơi cao hơn giữa màn hình
@@ -57,7 +58,7 @@ class _HubPageState extends State<HubPage> with WidgetsBindingObserver, SingleTi
   int? linked; // thiết bị điện thoại điều khiển lần cuối: chỉ thiết bị này có đường nối
   bool loaded = false;
   late final AnimationController _pulse =
-  AnimationController(vsync: this, duration: const Duration(seconds: 9))..repeat();
+      AnimationController(vsync: this, duration: const Duration(seconds: 9))..repeat();
 
   @override
   void initState() {
@@ -110,7 +111,11 @@ class _HubPageState extends State<HubPage> with WidgetsBindingObserver, SingleTi
 
   Future<void> _open(Map<String, Object?> d) async {
     await Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => AcPage(deviceId: d['id'] as int)),
+      MaterialPageRoute<void>(
+        builder: (_) => d['kind'] == 'tv'
+            ? TvPage(deviceId: d['id'] as int)
+            : AcPage(deviceId: d['id'] as int),
+      ),
     );
     Cloud.onRemoteChanged = _load; // AcPage đã gỡ khi đóng
     _load();
@@ -145,20 +150,22 @@ class _HubPageState extends State<HubPage> with WidgetsBindingObserver, SingleTi
               title: const Text('Điều hòa'),
               onTap: () => Navigator.pop(ctx, 'ac'),
             ),
-            const ListTile(
-              leading: Icon(Icons.tv),
-              title: Text('TV (LG, Toshiba)'),
-              subtitle: Text('Sắp có'),
-              enabled: false,
-            ),
+            for (final b in TvBrand.values)
+              ListTile(
+                leading: const Icon(Icons.tv),
+                title: Text('TV ${tvBrandLabel[b]}'),
+                onTap: () => Navigator.pop(ctx, b.name),
+              ),
           ],
         ),
       ),
     );
-    if (kind != 'ac') return;
-    final name = await _askText('Tên thiết bị', 'Điều hòa ${devices.length + 1}');
+    if (kind == null) return;
+    final isAc = kind == 'ac';
+    final name = await _askText(
+        'Tên thiết bị', isAc ? 'Điều hòa ${devices.length + 1}' : 'TV ${tvBrandLabel[tvBrandOf(kind)]}');
     if (name == null) return;
-    await Db.addDevice(newAcDevice(name));
+    await Db.addDevice(isAc ? newAcDevice(name) : newTvDevice(name, kind));
     await _load();
   }
 
@@ -246,10 +253,10 @@ class _HubPageState extends State<HubPage> with WidgetsBindingObserver, SingleTi
             Transform.scale(
               scale: 1 + 0.10 * push, // nhịp chậm, chỉ khi sóng tới nơi
               child: _Orb(
-                  size: 64,
-                  lit: isOn,
-                  rim: id == linked ? atan2(center.dy - p.dy, center.dx - p.dx) : null,
-                  child: Icon(kindIcon(d['kind']), color: Colors.white, size: 28)),
+                size: 64,
+                lit: isOn,
+                rim: id == linked ? atan2(center.dy - p.dy, center.dx - p.dx) : null,
+                 child: Icon(kindIcon(d['kind']), color: Colors.white, size: 28)),
             ),
             const SizedBox(height: 6),
             Text(
@@ -266,37 +273,37 @@ class _HubPageState extends State<HubPage> with WidgetsBindingObserver, SingleTi
   }
 
   Widget _circleBtn(Widget child) => Container(
-    width: 36,
-    height: 36,
-    decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0x33FFFFFF)),
-    child: child,
-  );
+        width: 36,
+        height: 36,
+        decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0x33FFFFFF)),
+        child: child,
+      );
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: const Color(0xFF1B2030),
-    body: Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF9B9BA3), Color(0xFF3A3F52), Color(0xFF1B2030), Color(0xFF29303D)],
-          stops: [0, 0.3, 0.6, 1],
-        ),
-      ),
-      child: SafeArea(
-        child: LayoutBuilder(builder: (ctx, c) {
-          final w = c.maxWidth, h = c.maxHeight;
-          final center = Offset(w / 2, h * _nodeY);
-          return AnimatedBuilder(
-            animation: _pulse,
-            builder: (_, __) {
-              final t = _pulse.value;
-              Offset? lp; // vị trí đang hiển thị của thiết bị được nối
-              for (final d in devices) {
-                if (d['id'] == linked) lp = _pos(spots[linked]!, w, h, center, t);
-              }
-              return Stack(
+        backgroundColor: const Color(0xFF1B2030),
+        body: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF9B9BA3), Color(0xFF3A3F52), Color(0xFF1B2030), Color(0xFF29303D)],
+              stops: [0, 0.3, 0.6, 1],
+            ),
+          ),
+          child: SafeArea(
+            child: LayoutBuilder(builder: (ctx, c) {
+              final w = c.maxWidth, h = c.maxHeight;
+              final center = Offset(w / 2, h * _nodeY);
+              return AnimatedBuilder(
+                animation: _pulse,
+                builder: (_, __) {
+                  final t = _pulse.value;
+                  Offset? lp; // vị trí đang hiển thị của thiết bị được nối
+                  for (final d in devices) {
+                    if (d['id'] == linked) lp = _pos(spots[linked]!, w, h, center, t);
+                  }
+                  return Stack(
                 children: [
                   Positioned.fill(
                     child: CustomPaint(
@@ -312,22 +319,22 @@ class _HubPageState extends State<HubPage> with WidgetsBindingObserver, SingleTi
                     child: Transform.scale(
                       scale: 1 + 0.09 * heartBeat(t), // nhịp tim riêng, trùng lúc sóng phát ra
                       child: _Orb(
-                        size: 96,
-                        lit: true,
-                        rim: lp == null ? null : atan2(lp.dy - center.dy, lp.dx - center.dx),
-                        child: Container(
-                          width: 22,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(4),
-                            gradient: const LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [Color(0xFFE4E6EA), Color(0xFF9EA3AB)],
-                            ),
+                      size: 96,
+                      lit: true,
+                      rim: lp == null ? null : atan2(lp.dy - center.dy, lp.dx - center.dx),
+                      child: Container(
+                        width: 22,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(4),
+                          gradient: const LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [Color(0xFFE4E6EA), Color(0xFF9EA3AB)],
                           ),
                         ),
                       ),
+                    ),
                     ),
                   ),
                   for (final d in devices) _bubble(d, w, h, center, t),
@@ -364,13 +371,13 @@ class _HubPageState extends State<HubPage> with WidgetsBindingObserver, SingleTi
                       ),
                     ),
                 ],
+                  );
+                },
               );
-            },
-          );
-        }),
-      ),
-    ),
-  );
+            }),
+          ),
+        ),
+      );
 }
 
 /// Hình tròn tối có viền đồng phát sáng ở đáy (nút điện thoại và thiết bị).
@@ -383,10 +390,10 @@ class _Orb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => CustomPaint(
-    painter: _RimPainter(lit, rim),
-    size: Size.square(size),
-    child: SizedBox(width: size, height: size, child: Center(child: child)),
-  );
+        painter: _RimPainter(lit, rim),
+        size: Size.square(size),
+        child: SizedBox(width: size, height: size, child: Center(child: child)),
+      );
 }
 
 class _RimPainter extends CustomPainter {

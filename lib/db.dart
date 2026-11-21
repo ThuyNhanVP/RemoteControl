@@ -20,6 +20,10 @@ Map<String, Object?> newAcDevice(String name) => {
       'light': 1,
     };
 
+/// Dòng thiết bị TV mới; cột `proto` lưu tên hãng (`lg`, `toshiba`), các cột điều hòa giữ mặc định.
+Map<String, Object?> newTvDevice(String name, String brand) =>
+    {...newAcDevice(name), 'kind': 'tv', 'proto': brand};
+
 int _now() => DateTime.now().millisecondsSinceEpoch;
 
 int _int(Object? v, int fallback) => v is num ? v.toInt() : fallback;
@@ -137,8 +141,10 @@ class Db {
 
   // ---------- Thiết bị ----------
 
-  static Future<List<Map<String, Object?>>> devices() async =>
-      (await _database).query('devices', orderBy: 'id');
+  /// [kind] 'ac' hoặc 'tv' để lọc; bỏ trống thì lấy tất cả.
+  static Future<List<Map<String, Object?>>> devices({String? kind}) async =>
+      (await _database).query('devices',
+          where: kind == null ? null : 'kind = ?', whereArgs: kind == null ? null : [kind], orderBy: 'id');
 
   static Future<int> addDevice(Map<String, Object?> values) async {
     final id = await (await _database)
@@ -255,6 +261,7 @@ class Db {
       'sleep': _int(r['sleep'], 0),
       'turbo': _int(r['turbo'], 0),
       'light': _int(r['light'], 1),
+      'kind': (r['kind'] ?? 'ac').toString(),
       'updated': _int(r['updated'], 0),
     };
     final n = await db.update('devices', v, where: 'cid = ?', whereArgs: [cid]);

@@ -529,10 +529,10 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
         await _loadDb();
         return;
       }
-      var list = await Db.devices();
+      var list = await Db.devices(kind: 'ac');
       if (list.isEmpty) {
         await Db.addDevice(_newDeviceMap('Điều hòa'));
-        list = await Db.devices();
+        list = await Db.devices(kind: 'ac');
       }
       final cur = list.where((d) => d['id'] == id).toList();
       if (cur.isEmpty) {
@@ -557,10 +557,10 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
       final oKey = await Db.getMeta('openrouter_api_key');
       final oModel = await Db.getMeta('openrouter_model') ?? openRouterFreeModels.first;
 
-      var list = await Db.devices();
+      var list = await Db.devices(kind: 'ac');
       if (list.isEmpty) {
         await Db.addDevice(_newDeviceMap('Điều hòa'));
-        list = await Db.devices();
+        list = await Db.devices(kind: 'ac');
       }
       final lastId = widget.deviceId ?? int.tryParse(await Db.getMeta('last_device') ?? '');
       final cur = list.firstWhere((d) => d['id'] == lastId, orElse: () => list.first);
@@ -603,7 +603,7 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
   Future<void> _applyAiResult(AiResult res) async {
     if (res.targetDeviceName != null) {
       final target = devices.firstWhere(
-            (d) => (d['name'] as String).toLowerCase() == res.targetDeviceName!.toLowerCase(),
+        (d) => (d['name'] as String).toLowerCase() == res.targetDeviceName!.toLowerCase(),
         orElse: () => <String, Object?>{},
       );
       if (target.isNotEmpty) {
@@ -695,7 +695,7 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
     if (name == null) return;
     try {
       final id = await Db.addDevice(_newDeviceMap(name));
-      final list = await Db.devices();
+      final list = await Db.devices(kind: 'ac');
       final d = list.firstWhere((x) => x['id'] == id);
       await _useDevice(d, list: list);
     } catch (e) {
@@ -707,7 +707,7 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
     final name = await _askText('Đổi tên', d['name'] as String);
     if (name == null) return;
     await Db.updateDevice(d['id'] as int, {'name': name});
-    final list = await Db.devices();
+    final list = await Db.devices(kind: 'ac');
     if (!mounted) return;
     setState(() {
       devices = list;
@@ -722,7 +722,7 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
     }
     if (!await _confirm('Xóa "${d['name']}" và các cài sẵn của nó?')) return;
     await Db.deleteDevice(d['id'] as int);
-    final list = await Db.devices();
+    final list = await Db.devices(kind: 'ac');
     if (d['id'] == deviceId) {
       await _useDevice(list.first, list: list);
     } else if (mounted) {
