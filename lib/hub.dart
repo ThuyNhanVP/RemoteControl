@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'db.dart';
 import 'firebase_sync.dart';
 import 'main.dart';
+import 'tv.dart';
 
 const _copper = Color(0xFFC9803F);
 const _nodeY = 0.40; // nút điện thoại nằm hơi cao hơn giữa màn hình
@@ -76,7 +77,10 @@ class _HubPageState extends State<HubPage> with WidgetsBindingObserver, SingleTi
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _load();
+    if (state == AppLifecycleState.resumed) {
+      Cloud.syncNow(); // kéo dữ liệu mới từ máy khác (trước đây chỉ AcPage làm việc này)
+      _load();
+    }
   }
 
   Future<void> _load() async {
@@ -110,7 +114,11 @@ class _HubPageState extends State<HubPage> with WidgetsBindingObserver, SingleTi
 
   Future<void> _open(Map<String, Object?> d) async {
     await Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => AcPage(deviceId: d['id'] as int)),
+      MaterialPageRoute<void>(
+        builder: (_) => d['kind'] == 'tv'
+            ? TvPage(deviceId: d['id'] as int)
+            : AcPage(deviceId: d['id'] as int),
+      ),
     );
     Cloud.onRemoteChanged = _load; // AcPage đã gỡ khi đóng
     _load();
@@ -145,20 +153,22 @@ class _HubPageState extends State<HubPage> with WidgetsBindingObserver, SingleTi
               title: const Text('Điều hòa'),
               onTap: () => Navigator.pop(ctx, 'ac'),
             ),
-            const ListTile(
-              leading: Icon(Icons.tv),
-              title: Text('TV (LG, Toshiba)'),
-              subtitle: Text('Sắp có'),
-              enabled: false,
-            ),
+            for (final b in TvBrand.values)
+              ListTile(
+                leading: const Icon(Icons.tv),
+                title: Text('TV ${tvBrandLabel[b]}'),
+                onTap: () => Navigator.pop(ctx, b.name),
+              ),
           ],
         ),
       ),
     );
-    if (kind != 'ac') return;
-    final name = await _askText('Tên thiết bị', 'Điều hòa ${devices.length + 1}');
+    if (kind == null) return;
+    final isAc = kind == 'ac';
+    final name = await _askText(
+        'Tên thiết bị', isAc ? 'Điều hòa ${devices.length + 1}' : 'TV ${tvBrandLabel[tvBrandOf(kind)]}');
     if (name == null) return;
-    await Db.addDevice(newAcDevice(name));
+    await Db.addDevice(isAc ? newAcDevice(name) : newTvDevice(name, kind));
     await _load();
   }
 
@@ -350,6 +360,23 @@ class _HubPageState extends State<HubPage> with WidgetsBindingObserver, SingleTi
                           child: _circleBtn(const Icon(Icons.more_vert, color: Colors.white, size: 20)),
                         ),
                       ],
+                    ),
+                  ),
+                  Positioned(
+                    top: 46,
+                    left: 20,
+                    right: 20,
+                    child: ValueListenableBuilder<String>(
+                      valueListenable: Cloud.status,
+                      builder: (_, v, __) => v.isEmpty
+                          ? const SizedBox.shrink()
+                          : GestureDetector(
+                        onTap: Cloud.syncNow, // chạm để đồng bộ ngay
+                        child: Text(v,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                      ),
                     ),
                   ),
                   if (loaded && devices.isEmpty)
