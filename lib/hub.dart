@@ -58,7 +58,7 @@ class _HubPageState extends State<HubPage> with WidgetsBindingObserver, SingleTi
   int? linked; // thiết bị điện thoại điều khiển lần cuối: chỉ thiết bị này có đường nối
   bool loaded = false;
   late final AnimationController _pulse =
-      AnimationController(vsync: this, duration: const Duration(seconds: 9))..repeat();
+  AnimationController(vsync: this, duration: const Duration(seconds: 9))..repeat();
 
   @override
   void initState() {
@@ -77,7 +77,10 @@ class _HubPageState extends State<HubPage> with WidgetsBindingObserver, SingleTi
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _load();
+    if (state == AppLifecycleState.resumed) {
+      Cloud.syncNow(); // kéo dữ liệu mới từ máy khác (trước đây chỉ AcPage làm việc này)
+      _load();
+    }
   }
 
   Future<void> _load() async {
@@ -253,10 +256,10 @@ class _HubPageState extends State<HubPage> with WidgetsBindingObserver, SingleTi
             Transform.scale(
               scale: 1 + 0.10 * push, // nhịp chậm, chỉ khi sóng tới nơi
               child: _Orb(
-                size: 64,
-                lit: isOn,
-                rim: id == linked ? atan2(center.dy - p.dy, center.dx - p.dx) : null,
-                 child: Icon(kindIcon(d['kind']), color: Colors.white, size: 28)),
+                  size: 64,
+                  lit: isOn,
+                  rim: id == linked ? atan2(center.dy - p.dy, center.dx - p.dx) : null,
+                  child: Icon(kindIcon(d['kind']), color: Colors.white, size: 28)),
             ),
             const SizedBox(height: 6),
             Text(
@@ -273,37 +276,37 @@ class _HubPageState extends State<HubPage> with WidgetsBindingObserver, SingleTi
   }
 
   Widget _circleBtn(Widget child) => Container(
-        width: 36,
-        height: 36,
-        decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0x33FFFFFF)),
-        child: child,
-      );
+    width: 36,
+    height: 36,
+    decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0x33FFFFFF)),
+    child: child,
+  );
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: const Color(0xFF1B2030),
-        body: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFF9B9BA3), Color(0xFF3A3F52), Color(0xFF1B2030), Color(0xFF29303D)],
-              stops: [0, 0.3, 0.6, 1],
-            ),
-          ),
-          child: SafeArea(
-            child: LayoutBuilder(builder: (ctx, c) {
-              final w = c.maxWidth, h = c.maxHeight;
-              final center = Offset(w / 2, h * _nodeY);
-              return AnimatedBuilder(
-                animation: _pulse,
-                builder: (_, __) {
-                  final t = _pulse.value;
-                  Offset? lp; // vị trí đang hiển thị của thiết bị được nối
-                  for (final d in devices) {
-                    if (d['id'] == linked) lp = _pos(spots[linked]!, w, h, center, t);
-                  }
-                  return Stack(
+    backgroundColor: const Color(0xFF1B2030),
+    body: Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF9B9BA3), Color(0xFF3A3F52), Color(0xFF1B2030), Color(0xFF29303D)],
+          stops: [0, 0.3, 0.6, 1],
+        ),
+      ),
+      child: SafeArea(
+        child: LayoutBuilder(builder: (ctx, c) {
+          final w = c.maxWidth, h = c.maxHeight;
+          final center = Offset(w / 2, h * _nodeY);
+          return AnimatedBuilder(
+            animation: _pulse,
+            builder: (_, __) {
+              final t = _pulse.value;
+              Offset? lp; // vị trí đang hiển thị của thiết bị được nối
+              for (final d in devices) {
+                if (d['id'] == linked) lp = _pos(spots[linked]!, w, h, center, t);
+              }
+              return Stack(
                 children: [
                   Positioned.fill(
                     child: CustomPaint(
@@ -319,22 +322,22 @@ class _HubPageState extends State<HubPage> with WidgetsBindingObserver, SingleTi
                     child: Transform.scale(
                       scale: 1 + 0.09 * heartBeat(t), // nhịp tim riêng, trùng lúc sóng phát ra
                       child: _Orb(
-                      size: 96,
-                      lit: true,
-                      rim: lp == null ? null : atan2(lp.dy - center.dy, lp.dx - center.dx),
-                      child: Container(
-                        width: 22,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(4),
-                          gradient: const LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [Color(0xFFE4E6EA), Color(0xFF9EA3AB)],
+                        size: 96,
+                        lit: true,
+                        rim: lp == null ? null : atan2(lp.dy - center.dy, lp.dx - center.dx),
+                        child: Container(
+                          width: 22,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(4),
+                            gradient: const LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [Color(0xFFE4E6EA), Color(0xFF9EA3AB)],
+                            ),
                           ),
                         ),
                       ),
-                    ),
                     ),
                   ),
                   for (final d in devices) _bubble(d, w, h, center, t),
@@ -359,6 +362,23 @@ class _HubPageState extends State<HubPage> with WidgetsBindingObserver, SingleTi
                       ],
                     ),
                   ),
+                  Positioned(
+                    top: 46,
+                    left: 20,
+                    right: 20,
+                    child: ValueListenableBuilder<String>(
+                      valueListenable: Cloud.status,
+                      builder: (_, v, __) => v.isEmpty
+                          ? const SizedBox.shrink()
+                          : GestureDetector(
+                        onTap: Cloud.syncNow, // chạm để đồng bộ ngay
+                        child: Text(v,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                      ),
+                    ),
+                  ),
                   if (loaded && devices.isEmpty)
                     Positioned(
                       left: 0,
@@ -371,13 +391,13 @@ class _HubPageState extends State<HubPage> with WidgetsBindingObserver, SingleTi
                       ),
                     ),
                 ],
-                  );
-                },
               );
-            }),
-          ),
-        ),
-      );
+            },
+          );
+        }),
+      ),
+    ),
+  );
 }
 
 /// Hình tròn tối có viền đồng phát sáng ở đáy (nút điện thoại và thiết bị).
@@ -390,10 +410,10 @@ class _Orb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => CustomPaint(
-        painter: _RimPainter(lit, rim),
-        size: Size.square(size),
-        child: SizedBox(width: size, height: size, child: Center(child: child)),
-      );
+    painter: _RimPainter(lit, rim),
+    size: Size.square(size),
+    child: SizedBox(width: size, height: size, child: Center(child: child)),
+  );
 }
 
 class _RimPainter extends CustomPainter {
