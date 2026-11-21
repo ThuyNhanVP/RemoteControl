@@ -31,8 +31,8 @@ App Flutter (Android) điều khiển điều hòa bằng đèn IR của điện
 | `lib/main.dart` | Giao diện và trạng thái màn hình, nhãn tiếng Việt, gọi Kotlin, nút Trợ lý AI | `MethodChannel('ir')`, `hasIr`, `sendIr(pattern, freq)`, `RoundBtn`, `FanIcon`, `_AcPageState`, `_openAiAssistant`, `_applyAiResult` |
 | `lib/ai_assistant.dart` | Trợ lý Giọng nói AI & Xử lý ngôn ngữ tự nhiên | `AiAssistantEngine`, `AiResult`, `AiAssistantSheet`, parser Local Smart NLP & Gemini API Cloud |
 | `lib/protocols.dart` | Enum `AcMode`, `AcFan`, `Feat`, `Proto`, lớp `IrCmd` và mã hóa 10 giao thức. Thuần Dart, không import Flutter | `greeState/greePattern`, `coolixFrame/coolixPattern`, `lgFrame/lgPattern`, `mideaState/Pattern`, `tclState/Pattern`, `samsungState/Extended/Pattern/Off`, `daikinState/Pattern`, `panasonicState/Pattern`, `clampInt`, `hexInt`, `hexBytes`, `coolixFeat` |
-| `lib/tv.dart` | `TvBrand`, `TvKey`, bảng mã NEC1 (địa chỉ + lệnh) của LG và Toshiba lấy từ IRDB, `necPattern` (khung NEC 38 kHz, bit thấp trước), `tvPattern`, `TvPage` (gửi qua `sendIr` của main.dart, đặt meta `last_ctrl`). Thêm hãng: thêm vào `TvBrand` và `_codes`, đủ mọi `TvKey` (test kiểm tra). Phím mũi tên của Toshiba trùng mã Vol/Ch như remote thật | `necPattern`, `tvPattern`, `TvPage` |
-| `lib/hub.dart` | Màn hình chính kéo thả (`HubPage`), hoạt ảnh sóng và nhịp tim, `defaultSpot`, `wavePush`, `heartBeat`, `kindIcon`; chỉ thiết bị có meta `last_ctrl` (đặt trong `_send` của main.dart) được nối với nút giữa | `HubPage`, `_Orb`, `_LinkPainter` |
+| `lib/tv.dart` | `TvBrand`, `TvKey`, bảng mã NEC1 (địa chỉ + lệnh) của LG và Toshiba lấy từ IRDB, `necPattern` (khung NEC 38 kHz, bit thấp trước), `tvPattern`, `TvPage` (gửi qua `sendIr` của main.dart, đặt meta `last_ctrl`). Giao diện: `_btn`, `_rocker` (thanh Vol/CH), `_dpad` (vòng mũi tên), `_Tap` (thu nhỏ và sáng khi nhấn), kích thước hàng giữa tính theo bề rộng màn hình. `muted` chỉ là trạng thái đoán (bấm mute thì đảo, bấm Vol thì về bật tiếng) vì hồng ngoại một chiều. Thêm hãng: thêm vào `TvBrand` và `_codes`, đủ mọi `TvKey` (test kiểm tra). Phím mũi tên của Toshiba trùng mã Vol/Ch như remote thật | `necPattern`, `tvPattern`, `TvPage` |
+| `lib/hub.dart` | Màn hình chính kéo thả (`HubPage`), gọi `Cloud.syncNow()` khi app mở lại và hiện dòng trạng thái đồng bộ (`Cloud.status`, chạm để đồng bộ), hoạt ảnh sóng và nhịp tim, `defaultSpot`, `wavePush`, `heartBeat`, `kindIcon`; chỉ thiết bị có meta `last_ctrl` (đặt trong `_send` của main.dart) được nối với nút giữa | `HubPage`, `_Orb`, `_LinkPainter` |
 | `lib/db.dart` | SQLite (sqflite), bản 3 | `Db.devices/addDevice/updateDevice/deleteDevice`, `presets/addPreset/deletePreset`, `getMeta/setMeta`, `onChanged`, hàm dành cho đồng bộ (`allPresets`, `pendingDeletes`, `applyRemoteDevice/Preset`, `deleteByCid`) |
 | `lib/firebase_sync.dart` | Firebase | `Cloud` (init, signIn, signOut, syncNow, `_sync`, log), `SyncCard`, `HistoryPage` |
 | `lib/weather.dart` | Thời tiết, gợi ý + nút Áp dụng | `WeatherApi.forecast/search`, `WeatherCard(onApply)`, `Place`, `Advice`, `_advice` |
@@ -145,6 +145,10 @@ Thư viện chính (có thể thiếu một số gói; xem `pubspec.yaml`): sqfl
 - Icon mặc định Flutter dùng tên `Icons.toys_outlined` trông như xe đồ chơi; quạt dùng `FanIcon` tự vẽ.
 - Độ dài chuỗi xung tối đa mà bộ phát IR của máy chấp nhận chưa biết (Daikin khoảng 580 giá trị); nếu một giao thức dài không phát được, hãy nghi ngờ giới hạn này.
 
+- Hub là màn hình chính nên việc đồng bộ khi mở lại app phải nằm trong `HubPage` (trước đây chỉ `AcPage` làm, nên mở app vào hub thì không kéo dữ liệu từ máy khác). Sửa lại ở 2026-11-21: nếu thêm màn gốc khác thì phải làm lại việc này.
+- Dòng TV trong bảng `devices` và trên Firestore vẫn mang các cột điều hòa mặc định (`mode`, `temp`, `fan`, ...). Cố ý để vậy cho đơn giản, không ảnh hưởng điều khiển; bỏ đi thì phải sửa `_devDoc` và `applyRemoteDevice`.
+- Phím trên màn TV dùng `_Tap` (GestureDetector + AnimatedScale), đừng đổi sang `InkWell` nếu không giữ hiệu ứng thu nhỏ.
+
 ## 10. Việc còn lại (theo thứ tự gợi ý)
 
 1. Xác nhận giao thức của Casper và LG trên máy thật (kết quả dò của người dùng). Nếu không giao thức nào ăn: bắt tín hiệu remote thật bằng VS1838B + ESP32/Arduino (IRrecvDumpV2) rồi viết giao thức riêng.
@@ -159,6 +163,7 @@ Thư viện chính (có thể thiếu một số gói; xem `pubspec.yaml`): sqfl
 
 | Ngày | Thay đổi | File |
 |---|---|---|
+| 2026-11-21 | Giao diện TV thoáng hơn (vòng mũi tên, thanh Vol/CH, hiệu ứng nhấn), nút tắt tiếng đổi icon luân phiên; hub đồng bộ khi mở lại app và hiện trạng thái đồng bộ (sửa lỗi hub làm mất việc đồng bộ khi quay lại app) | lib/tv.dart, lib/hub.dart, README.md, AGENTS.md |
 | 2026-11-21 | Điều khiển TV LG và Toshiba (mã NEC1 từ IRDB), trang `TvPage`, thêm TV từ hub, đồng bộ `kind`, `Db.devices(kind:)`, test mã NEC | lib/tv.dart, lib/hub.dart, lib/db.dart, lib/firebase_sync.dart, lib/main.dart, test/tv_test.dart, README.md, AGENTS.md |
 | 2026-11-19 | Màn hình chính kiểu smart home kéo thả (`HubPage`), `AcPage` nhận `deviceId`, SQLite lên bản 3 (`kind`, `px`, `py`), `Db.setPos`, `newAcDevice`, hoạt ảnh sóng/nhịp tim, đường nối tới thiết bị điều khiển gần nhất (meta `last_ctrl`), test `defaultSpot`/`wavePush`/`heartBeat` | lib/hub.dart, lib/db.dart, lib/main.dart, test/hub_test.dart, README.md, AGENTS.md |
 | 2026-11-17 | CI chạy xanh: nâng Android Gradle Plugin 9.1.0 lên 9.1.1 (Flutter stable mới đòi tối thiểu 9.1.1); xóa 2 import thừa và bỏ qua bài test gọi OpenRouter thật khi không có khóa (`skip`) | android/settings.gradle.kts, test/ai_assistant_test.dart |
