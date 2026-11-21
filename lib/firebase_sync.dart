@@ -117,6 +117,7 @@ class Cloud {
   static Map<String, Object?> _devDoc(Map<String, Object?> l) => {
         'name': l['name'],
         'proto': l['proto'],
+        'kind': l['kind'],
         'mode': l['mode'],
         'temp': l['temp'],
         'fan': l['fan'],
