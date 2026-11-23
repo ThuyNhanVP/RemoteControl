@@ -25,12 +25,14 @@ const _codes = {
     TvKey.up: 64, TvKey.down: 65, TvKey.left: 7, TvKey.right: 6, TvKey.ok: 68,
     TvKey.back: 40, TvKey.menu: 67,
   }),
-  // Remote Toshiba dùng phím Vol/Ch làm phím mũi tên trong menu, nên up/down/left/right trùng mã Ch/Vol.
+  // Remote Toshiba đời mới (CT-90326, CT-8560): mũi tên, OK, Back, Menu có phím riêng.
+  // Đã thử trên TV thật: Nguồn, Tắt tiếng, Vol chạy đúng. Kênh chỉ có tác dụng khi TV đang xem truyền hình
+  // (không phải HDMI hay ứng dụng). Nếu Nguồn vào không ăn, thử lệnh 20 thay cho 15.
   TvBrand.toshiba: _Nec(64, {
     TvKey.power: 18, TvKey.mute: 16, TvKey.volUp: 26, TvKey.volDown: 30,
     TvKey.chUp: 27, TvKey.chDown: 31, TvKey.input: 15,
-    TvKey.up: 27, TvKey.down: 31, TvKey.left: 30, TvKey.right: 26, TvKey.ok: 128,
-    TvKey.back: 88, TvKey.menu: 128,
+    TvKey.up: 25, TvKey.down: 29, TvKey.left: 66, TvKey.right: 64, TvKey.ok: 33,
+    TvKey.back: 100, TvKey.menu: 91,
   }),
 };
 
