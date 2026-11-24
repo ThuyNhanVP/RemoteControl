@@ -10,7 +10,7 @@
 - **Màn hình chính kiểu smart home:** các thiết bị là hình tròn quanh nút điện thoại ở giữa. Nút giữa đập như nhịp tim và phát sóng; thiết bị bị sóng đẩy nhẹ khi sóng tới. Chỉ thiết bị vừa được điều khiển có đường nối và cung màu đồng hướng vào nút giữa. Kéo để đặt vị trí (nhớ trên máy), chạm để mở điều khiển, giữ lâu để đổi tên hoặc xóa, menu ba chấm để thêm. Thêm được điều hòa và TV (LG, Toshiba). Dòng chữ nhỏ dưới tiêu đề cho biết trạng thái đồng bộ Firebase, chạm để đồng bộ ngay.
 - **Điều khiển điều hòa:** Nguồn, Chế độ (Lạnh, Khô, Quạt, Tự động, Sưởi), Nhiệt độ, Quạt, Đảo gió, Ngủ, Đèn, Turbo. Nút nào giao thức không hỗ trợ thì bị làm mờ.
 - **Trợ lý Giọng nói AI:** Nói câu lệnh tiếng Việt tự nhiên ("Bật 24 độ chế độ làm lạnh", "Nóng quá hạ 2 độ", "Bật sưởi 28 độ quạt mạnh", "Tắt điều hòa"). AI Local Parser tự động nhận diện 100% offline; hỗ trợ kết nối Google Gemini AI Cloud hoặc OpenRouter với danh sách các mô hình Miễn phí (Llama 3.3 70B, DeepSeek R1, Gemini 2.0 Flash Lite, Qwen 2.5 32B, Mistral 7B).
-- **10 giao thức IR:** Gree A, Gree B, Coolix, LG1, LG2, Midea, TCL, Samsung, Daikin, Panasonic.
+- **11 giao thức IR:** Gree A, Gree B, Coolix, LG1, LG2, Midea, TCL, Samsung, Daikin, Panasonic, Electra (remote AUX và mã YKR-…; đã chạy trên Casper TC-09IS36 với remote YKR-C/001).
 - **Dò tự động giao thức:** app gửi lệnh BẬT lần lượt theo từng giao thức, bạn bấm DỪNG khi điều hòa kêu "bíp".
 - **Nhiều thiết bị, nhiều cài sẵn:** mỗi điều hòa có giao thức và trạng thái riêng. Lưu và áp dụng cài sẵn bằng một chạm. Dữ liệu lưu trong SQLite trên máy.
 - **Đồng bộ Firebase (tùy chọn):** đăng nhập Google để đồng bộ thiết bị và cài sẵn giữa nhiều điện thoại, lưu nhật ký bật/tắt và xem thống kê giờ bật 7 ngày.
@@ -109,7 +109,7 @@ lib/
   main.dart            Màn điều khiển điều hòa (AcPage), trạng thái màn hình, gọi sang Kotlin
   tv.dart              Mã NEC của TV (LG, Toshiba), hàm tạo xung và màn điều khiển TV (TvPage)
   hub.dart             Màn hình chính kéo thả (HubPage), vị trí mặc định quanh tâm
-  protocols.dart       Enum và mã hóa 10 giao thức (hàm thuần, không phụ thuộc Flutter)
+  protocols.dart       Enum và mã hóa 11 giao thức (hàm thuần, không phụ thuộc Flutter)
   db.dart              SQLite (thiết bị, cài sẵn, meta) và dữ liệu phục vụ đồng bộ
   firebase_sync.dart   Đăng nhập, đồng bộ Firestore, nhật ký, màn Lịch sử
   weather.dart         Thẻ thời tiết, gợi ý và nút Áp dụng (API Open-Meteo)

@@ -62,4 +62,30 @@ void main() {
     expect(b.length, 8);
     expect(greePattern(b).length, 139);
   });
+
+  // Khung mẫu từ test của thư viện (ir_Electra_test.cpp, Turbo): 24C, Lạnh, quạt nhẹ, turbo, đèn tắt.
+  test('Electra: 24°C Lạnh quạt nhẹ turbo khớp khung mẫu của thư viện', () {
+    expect(
+      electraState(on: true, mode: AcMode.cool, temp: 24, fan: AcFan.low, turbo: true),
+      [0xC3, 0x87, 0xE0, 0x00, 0x60, 0x40, 0x20, 0x00, 0x00, 0x20, 0x00, 0x08, 0x12],
+    );
+  });
+
+  test('Electra: tắt máy xóa bit nguồn, tổng kiểm đúng; đảo gió bật là 0', () {
+    final off = electraState(on: false, mode: AcMode.cool, temp: 26, fan: AcFan.auto);
+    expect(off[9], 0x00);
+    expect(off[12], sum(off, 0, 12));
+    final sw = electraState(on: true, mode: AcMode.cool, temp: 16, fan: AcFan.auto, swing: true);
+    expect(sw[1], (0 | ((16 - 8) << 3)));
+    expect(sw[12], sum(sw, 0, 12));
+  });
+
+  test('Electra: chuỗi xung 211 phần tử, tiêu đề 9166/4470, byte đầu 0xC3 bit thấp trước', () {
+    final b = electraState(on: true, mode: AcMode.cool, temp: 24, fan: AcFan.low);
+    final p = electraPattern(b);
+    expect(p.length, 2 + 13 * 8 * 2 + 1);
+    expect(p.sublist(0, 2), [9166, 4470]);
+    // 0xC3 = 11000011, gửi bit thấp trước: 1 1 0 0 0 0 1 1
+    expect([for (var i = 0; i < 8; i++) p[3 + 2 * i]], [1647, 1647, 547, 547, 547, 547, 1647, 1647]);
+  });
 }
