@@ -8,6 +8,7 @@ import 'hub.dart';
 import 'protocols.dart';
 import 'weather.dart';
 import 'secrets.dart';
+import 'tv.dart';
 
 // ====== Giao tiếp hồng ngoại (gọi sang Kotlin) ======
 const _ch = MethodChannel('ir');
@@ -590,7 +591,10 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
     }
   }
 
-  void _openAiAssistant() {
+  Future<void> _openAiAssistant() async {
+    final allDevs = await Db.devices();
+    if (!mounted) return;
+
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -601,8 +605,10 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
         currentMode: mode,
         currentFan: fan,
         currentFeat: feat,
-        availableDevices: devices.map((d) => (d['name'] as String?) ?? 'Điều hòa').toList(),
+        deviceList: allDevs,
+        availableDevices: allDevs.map((d) => (d['name'] as String?) ?? 'Điều hòa').toList(),
         currentDeviceName: deviceName,
+        currentDeviceKind: 'ac',
         minTemp: _minTemp,
         aiProvider: aiProvider,
         apiKey: aiProvider == 'openrouter' ? openRouterApiKey : geminiApiKey,
@@ -613,13 +619,58 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
   }
 
   Future<void> _applyAiResult(AiResult res) async {
+    // Nếu lệnh dành cho TV
+    if (res.tvKey != null) {
+      final tvs = await Db.devices(kind: 'tv');
+      Map<String, Object?>? targetTv;
+      if (res.targetDeviceName != null) {
+        final matches = tvs.where(
+            (d) => (d['name'] as String).toLowerCase() == res.targetDeviceName!.toLowerCase());
+        if (matches.isNotEmpty) targetTv = matches.first;
+      }
+      targetTv ??= tvs.isNotEmpty ? tvs.first : null;
+      if (targetTv != null) {
+        final brand = tvBrandOf(targetTv['proto']);
+        for (var i = 0; i < res.tvRepeat; i++) {
+          await sendIr(tvPattern(brand, res.tvKey!));
+          if (res.tvRepeat > 1 && i < res.tvRepeat - 1) {
+            await Future.delayed(const Duration(milliseconds: 150));
+          }
+        }
+        await Db.setMeta('last_ctrl', '${targetTv['id']}');
+        if (res.tvKey == TvKey.power) {
+          final curOn = await Db.getMeta('powered_${targetTv['id']}') == '1';
+          await Db.setMeta('powered_${targetTv['id']}', curOn ? '0' : '1');
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Đã gửi lệnh TV [${targetTv['name']}]: ${res.response}'),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+      return;
+    }
+
     if (res.targetDeviceName != null) {
-      final target = devices.firstWhere(
+      final allDevs = await Db.devices();
+      final target = allDevs.firstWhere(
         (d) => (d['name'] as String).toLowerCase() == res.targetDeviceName!.toLowerCase(),
         orElse: () => <String, Object?>{},
       );
       if (target.isNotEmpty) {
-        await _useDevice(target);
+        if (target['kind'] == 'tv') {
+          if (mounted) {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute<void>(builder: (_) => TvPage(deviceId: target['id'] as int)),
+            );
+          }
+          return;
+        } else {
+          await _useDevice(target);
+        }
       }
     }
 

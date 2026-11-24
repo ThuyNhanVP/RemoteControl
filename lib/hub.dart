@@ -2,9 +2,12 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
+import 'ai_assistant.dart';
 import 'db.dart';
 import 'firebase_sync.dart';
 import 'main.dart';
+import 'protocols.dart';
+import 'secrets.dart';
 import 'tv.dart';
 
 const _copper = Color(0xFFC9803F);
@@ -123,6 +126,130 @@ class _HubPageState extends State<HubPage> with WidgetsBindingObserver, SingleTi
     Cloud.onRemoteChanged = _load; // AcPage đã gỡ khi đóng
     _load();
   }
+
+  Future<void> _openAiAssistant() async {
+    final provider = await Db.getMeta('ai_provider') ?? 'gemini';
+    final gKey = await Db.getMeta('gemini_api_key');
+    final oKey = await Db.getMeta('openrouter_api_key');
+    final oModel = await Db.getMeta('openrouter_model') ?? openRouterFreeModels.first;
+    final allDevices = await Db.devices();
+
+    Map<String, Object?>? curDev;
+    if (linked != null) {
+      final matches = allDevices.where((d) => d['id'] == linked);
+      if (matches.isNotEmpty) curDev = matches.first;
+    }
+
+    if (!mounted) return;
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => AiAssistantSheet(
+        currentDeviceName: curDev != null ? curDev['name'] as String? : null,
+        currentDeviceKind: curDev != null ? curDev['kind'] as String? : null,
+        deviceList: allDevices,
+        availableDevices: allDevices.map((d) => (d['name'] as String?) ?? '').toList(),
+        aiProvider: provider,
+        apiKey: provider == 'openrouter'
+            ? ((oKey != null && oKey.isNotEmpty) ? oKey : defaultOpenRouterApiKey)
+            : ((gKey != null && gKey.isNotEmpty) ? gKey : defaultGeminiApiKey),
+        openRouterModel: oModel,
+        onResultApplied: (res) => _applyAiResult(res, allDevices),
+      ),
+    );
+  }
+
+  Future<void> _applyAiResult(AiResult res, List<Map<String, Object?>> allDevices) async {
+    if (!res.actionTaken) return;
+
+    // Tìm thiết bị đích
+    Map<String, Object?>? target;
+    if (res.targetDeviceName != null) {
+      final matches = allDevices.where(
+        (d) => (d['name'] as String).toLowerCase() == res.targetDeviceName!.toLowerCase(),
+      );
+      if (matches.isNotEmpty) target = matches.first;
+    }
+    if (target == null || target.isEmpty) {
+      if (res.targetDeviceKind == 'tv' || res.tvKey != null) {
+        // Ưu tiên TV vừa dùng hoặc TV đầu tiên
+        target = allDevices.firstWhere(
+          (d) => d['kind'] == 'tv' && (linked == null || d['id'] == linked),
+          orElse: () => allDevices.firstWhere((d) => d['kind'] == 'tv', orElse: () => <String, Object?>{}),
+        );
+      } else {
+        // Ưu tiên Điều hòa
+        target = allDevices.firstWhere(
+          (d) => d['kind'] != 'tv' && (linked == null || d['id'] == linked),
+          orElse: () => allDevices.firstWhere((d) => d['kind'] != 'tv', orElse: () => <String, Object?>{}),
+        );
+      }
+    }
+
+    if (target.isEmpty) return;
+
+    final devId = target['id'] as int;
+    final isTv = target['kind'] == 'tv';
+
+    if (isTv && res.tvKey != null) {
+      final brand = tvBrandOf(target['proto']);
+      for (var i = 0; i < res.tvRepeat; i++) {
+        await sendIr(tvPattern(brand, res.tvKey!));
+        if (res.tvRepeat > 1 && i < res.tvRepeat - 1) {
+          await Future.delayed(const Duration(milliseconds: 150));
+        }
+      }
+      await Db.setMeta('last_ctrl', '$devId');
+      if (res.tvKey == TvKey.power) {
+        final curOn = await Db.getMeta('powered_$devId') == '1';
+        await Db.setMeta('powered_$devId', curOn ? '0' : '1');
+      }
+      await _load();
+    } else if (!isTv) {
+      // Điều khiển Điều hòa
+      final protoName = target['proto'] as String? ?? 'gree';
+      final p = Proto.values.firstWhere((e) => e.name == protoName, orElse: () => Proto.gree);
+      final m = res.mode ??
+          AcMode.values.firstWhere((e) => e.name == target!['mode'], orElse: () => AcMode.cool);
+      final f = res.fan ??
+          AcFan.values.firstWhere((e) => e.name == target!['fan'], orElse: () => AcFan.auto);
+      final t = res.temp ?? (target['temp'] as int? ?? 26);
+      final swing = res.featChanges[Feat.swing] ?? (target['swing'] == 1);
+      final sleep = res.featChanges[Feat.sleep] ?? (target['sleep'] == 1);
+      final turbo = res.featChanges[Feat.turbo] ?? (target['turbo'] == 1);
+      final light = res.featChanges[Feat.light] ?? ((target['light'] ?? 1) == 1);
+      final pwr = res.power ?? true;
+
+      await Db.updateDevice(devId, {
+        'mode': m.name,
+        'fan': f.name,
+        'temp': t,
+        'swing': swing ? 1 : 0,
+        'sleep': sleep ? 1 : 0,
+        'turbo': turbo ? 1 : 0,
+        'light': light ? 1 : 0,
+      });
+      await Db.setMeta('powered_$devId', pwr ? '1' : '0');
+      await Db.setMeta('last_ctrl', '$devId');
+
+      final cmd = buildAcCmd(
+        p,
+        pwr,
+        mode: m,
+        temp: t,
+        fan: f,
+        swing: swing,
+        sleep: sleep,
+        turbo: turbo,
+        light: light,
+      );
+      await sendIr(cmd.pattern, freq: cmd.freq);
+      await _load();
+    }
+  }
+
 
   Future<String?> _askText(String title, String initial) async {
     final c = TextEditingController(text: initial);
@@ -351,6 +478,15 @@ class _HubPageState extends State<HubPage> with WidgetsBindingObserver, SingleTi
                           child: Text('Smart Home',
                               style: TextStyle(color: Colors.white, fontSize: 16)),
                         ),
+                        _circleBtn(
+                          IconButton(
+                            padding: EdgeInsets.zero,
+                            icon: const Icon(Icons.auto_awesome, color: Colors.white, size: 20),
+                            onPressed: _openAiAssistant,
+                            tooltip: 'Trợ lý AI',
+                          ),
+                        ),
+                        const SizedBox(width: 8),
                         PopupMenuButton<int>(
                           tooltip: 'Thêm thiết bị',
                           onSelected: (_) => _add(),
