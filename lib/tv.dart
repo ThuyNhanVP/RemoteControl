@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import 'ai_assistant.dart';
 import 'db.dart';
 import 'main.dart' show sendIr;
-import 'secrets.dart';
+import 'settings.dart';
 
 enum TvBrand { lg, toshiba }
 
@@ -113,10 +113,7 @@ class _TvPageState extends State<TvPage> {
   }
 
   Future<void> _openAiAssistant() async {
-    final provider = await Db.getMeta('ai_provider') ?? 'gemini';
-    final gKey = await Db.getMeta('gemini_api_key');
-    final oKey = await Db.getMeta('openrouter_api_key');
-    final oModel = await Db.getMeta('openrouter_model') ?? openRouterFreeModels.first;
+    final ai = await AiConfig.load();
     final allDevices = await Db.devices();
 
     if (!mounted) return;
@@ -130,11 +127,9 @@ class _TvPageState extends State<TvPage> {
         currentDeviceKind: 'tv',
         deviceList: allDevices,
         availableDevices: allDevices.map((d) => (d['name'] as String?) ?? '').toList(),
-        aiProvider: provider,
-        apiKey: provider == 'openrouter'
-            ? ((oKey != null && oKey.isNotEmpty) ? oKey : defaultOpenRouterApiKey)
-            : ((gKey != null && gKey.isNotEmpty) ? gKey : defaultGeminiApiKey),
-        openRouterModel: oModel,
+        aiProvider: ai.provider,
+        apiKey: ai.apiKey,
+        openRouterModel: ai.model,
         onResultApplied: (res) async {
           if (res.tvKey != null) {
             for (var i = 0; i < res.tvRepeat; i++) {

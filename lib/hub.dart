@@ -7,7 +7,7 @@ import 'db.dart';
 import 'firebase_sync.dart';
 import 'main.dart';
 import 'protocols.dart';
-import 'secrets.dart';
+import 'settings.dart';
 import 'tv.dart';
 
 const _copper = Color(0xFFC9803F);
@@ -42,6 +42,41 @@ double heartBeat(double t) {
   final u = (t * 3) % 1;
   double bump(double c) => exp(-pow((u - c) / 0.05, 2).toDouble());
   return bump(0.04) + 0.6 * bump(0.2);
+}
+
+const _gap = 84.0; // cách nhau tối thiểu giữa tâm hai thiết bị (dp)
+const _hubGap = 88.0; // cách tối thiểu từ tâm nút giữa tới tâm một thiết bị
+
+/// Đẩy các điểm [pts] ra xa nhau như bong bóng: hai điểm gần hơn [_gap] thì bị đẩy dạng ra, và không điểm nào
+/// được vào sát [hub]. Điểm [pinned] (đang bị ngón tay kéo) đứng yên, những điểm khác nhường chỗ. Mọi điểm nằm trong [bounds].
+List<Offset> separate(List<Offset> pts, {required Offset hub, required Rect bounds, int? pinned}) {
+  final o = List<Offset>.of(pts);
+  Offset away(Offset v) => v.distance < 0.01 ? const Offset(0, 1) : v / v.distance;
+  Offset clamp(Offset q) => Offset(q.dx.clamp(bounds.left, bounds.right).toDouble(),
+      q.dy.clamp(bounds.top, bounds.bottom).toDouble());
+  for (var it = 0; it < 12; it++) {
+    for (var i = 0; i < o.length; i++) {
+      for (var j = i + 1; j < o.length; j++) {
+        final d = o[j] - o[i];
+        if (d.distance >= _gap) continue;
+        final push = away(d) * (_gap - d.distance);
+        if (i == pinned) {
+          o[j] += push;
+        } else if (j == pinned) {
+          o[i] -= push;
+        } else {
+          o[j] += push / 2;
+          o[i] -= push / 2;
+        }
+      }
+    }
+    for (var i = 0; i < o.length; i++) {
+      final v = o[i] - hub;
+      if (v.distance < _hubGap) o[i] = hub + away(v) * _hubGap;
+      o[i] = clamp(o[i]);
+    }
+  }
+  return o;
 }
 
 IconData kindIcon(Object? kind) => kind == 'tv' ? Icons.tv : Icons.ac_unit;
@@ -128,10 +163,7 @@ class _HubPageState extends State<HubPage> with WidgetsBindingObserver, SingleTi
   }
 
   Future<void> _openAiAssistant() async {
-    final provider = await Db.getMeta('ai_provider') ?? 'gemini';
-    final gKey = await Db.getMeta('gemini_api_key');
-    final oKey = await Db.getMeta('openrouter_api_key');
-    final oModel = await Db.getMeta('openrouter_model') ?? openRouterFreeModels.first;
+    final ai = await AiConfig.load();
     final allDevices = await Db.devices();
 
     Map<String, Object?>? curDev;
@@ -151,11 +183,9 @@ class _HubPageState extends State<HubPage> with WidgetsBindingObserver, SingleTi
         currentDeviceKind: curDev != null ? curDev['kind'] as String? : null,
         deviceList: allDevices,
         availableDevices: allDevices.map((d) => (d['name'] as String?) ?? '').toList(),
-        aiProvider: provider,
-        apiKey: provider == 'openrouter'
-            ? ((oKey != null && oKey.isNotEmpty) ? oKey : defaultOpenRouterApiKey)
-            : ((gKey != null && gKey.isNotEmpty) ? gKey : defaultGeminiApiKey),
-        openRouterModel: oModel,
+        aiProvider: ai.provider,
+        apiKey: ai.apiKey,
+        openRouterModel: ai.model,
         onResultApplied: (res) => _applyAiResult(res, allDevices),
       ),
     );
@@ -369,15 +399,18 @@ class _HubPageState extends State<HubPage> with WidgetsBindingObserver, SingleTi
         onTap: () => _open(d),
         onLongPress: () => _menu(d),
         onPanUpdate: (u) => setState(() {
-          spots[id] = Offset(
-            ((s.dx * w + u.delta.dx) / w).clamp(0.12, 0.88).toDouble(),
-            ((s.dy * h + u.delta.dy) / h).clamp(0.14, 0.86).toDouble(),
-          );
+          // Kéo thiết bị này; các thiết bị khác bị đẩy ra như bong bóng.
+          final ids = devices.map((e) => e['id'] as int).toList();
+          final pts = [for (final i in ids) Offset(spots[i]!.dx * w, spots[i]!.dy * h)];
+          final k = ids.indexOf(id);
+          pts[k] += u.delta;
+          final out = separate(pts,
+              hub: center, pinned: k, bounds: Rect.fromLTRB(0.12 * w, 0.14 * h, 0.88 * w, 0.86 * h));
+          for (var i = 0; i < ids.length; i++) {
+            spots[ids[i]] = Offset(out[i].dx / w, out[i].dy / h);
+          }
         }),
-        onPanEnd: (_) {
-          final p = spots[id]!;
-          Db.setPos(id, p.dx, p.dy);
-        },
+        onPanEnd: (_) => spots.forEach((i, p) => Db.setPos(i, p.dx, p.dy)),
         child: Column(
           children: [
             Transform.scale(
@@ -484,6 +517,16 @@ class _HubPageState extends State<HubPage> with WidgetsBindingObserver, SingleTi
                             icon: const Icon(Icons.auto_awesome, color: Colors.white, size: 20),
                             onPressed: _openAiAssistant,
                             tooltip: 'Trợ lý AI',
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        _circleBtn(
+                          IconButton(
+                            padding: EdgeInsets.zero,
+                            icon: const Icon(Icons.settings_outlined, color: Colors.white, size: 20),
+                            onPressed: () => Navigator.of(context)
+                                .push(MaterialPageRoute<void>(builder: (_) => const SettingsPage())),
+                            tooltip: 'Cài đặt',
                           ),
                         ),
                         const SizedBox(width: 8),
