@@ -5,17 +5,24 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'protocols.dart';
 import 'secrets.dart';
+import 'tv.dart';
 
 /// Kết quả xử lý câu lệnh tự nhiên của AI.
 class AiResult {
   final String query;
   final String response;
+  // Điều hòa:
   final bool? power;
   final int? temp;
   final AcMode? mode;
   final AcFan? fan;
   final Map<Feat, bool> featChanges;
+  // TV:
+  final TvKey? tvKey;
+  final int tvRepeat;
+  // Chung:
   final String? targetDeviceName;
+  final String? targetDeviceKind; // 'ac' hoặc 'tv'
   final bool isWeatherQuery;
   final bool actionTaken;
 
@@ -27,12 +34,14 @@ class AiResult {
     this.mode,
     this.fan,
     this.featChanges = const {},
+    this.tvKey,
+    this.tvRepeat = 1,
     this.targetDeviceName,
+    this.targetDeviceKind,
     this.isWeatherQuery = false,
     this.actionTaken = false,
   });
 }
-
 
 const openRouterFreeModels = [
   'openrouter/auto',
@@ -44,16 +53,18 @@ const openRouterFreeModels = [
 
 /// Động cơ xử lý ngôn ngữ tự nhiên (Local Smart Engine & Cloud Gemini / OpenRouter AI).
 class AiAssistantEngine {
-  /// Xử lý câu lệnh ngôn ngữ tự nhiên tiếng Việt.
+  /// Xử lý câu lệnh ngôn ngữ tự nhiên tiếng Việt cho toàn bộ thiết bị hỗ trợ (Điều hòa & TV).
   static Future<AiResult> processQuery(
     String query, {
-    required bool currentPower,
-    required int currentTemp,
-    required AcMode currentMode,
-    required AcFan currentFan,
-    required Map<Feat, bool> currentFeat,
-    required List<String> availableDevices,
+    bool currentPower = false,
+    int currentTemp = 26,
+    AcMode currentMode = AcMode.cool,
+    AcFan currentFan = AcFan.auto,
+    Map<Feat, bool> currentFeat = const {},
+    List<String> availableDevices = const [],
+    List<Map<String, Object?>>? deviceList,
     String? currentDeviceName,
+    String? currentDeviceKind, // 'ac' hoặc 'tv'
     int minTemp = 16,
     String aiProvider = 'gemini',
     String? apiKey,
@@ -68,6 +79,16 @@ class AiAssistantEngine {
       );
     }
 
+    // Đồng bộ danh sách tên thiết bị nếu có deviceList
+    final effectiveDevices = availableDevices.isNotEmpty
+        ? availableDevices
+        : (deviceList != null
+            ? deviceList
+                .map((d) => (d['name'] as String?) ?? '')
+                .where((s) => s.isNotEmpty)
+                .toList()
+            : <String>[]);
+
     if (aiProvider == 'openrouter') {
       final effectiveKey = (apiKey != null && apiKey.trim().isNotEmpty)
           ? apiKey.trim()
@@ -81,8 +102,10 @@ class AiAssistantEngine {
             currentMode: currentMode,
             currentFan: currentFan,
             currentFeat: currentFeat,
-            availableDevices: availableDevices,
+            availableDevices: effectiveDevices,
+            deviceList: deviceList,
             currentDeviceName: currentDeviceName,
+            currentDeviceKind: currentDeviceKind,
             minTemp: minTemp,
             apiKey: effectiveKey,
             openRouterModel: openRouterModel,
@@ -106,8 +129,10 @@ class AiAssistantEngine {
             currentMode: currentMode,
             currentFan: currentFan,
             currentFeat: currentFeat,
-            availableDevices: availableDevices,
+            availableDevices: effectiveDevices,
+            deviceList: deviceList,
             currentDeviceName: currentDeviceName,
+            currentDeviceKind: currentDeviceKind,
             minTemp: minTemp,
             apiKey: effectiveKey,
             weatherSummary: weatherSummary,
@@ -125,8 +150,10 @@ class AiAssistantEngine {
       currentMode: currentMode,
       currentFan: currentFan,
       currentFeat: currentFeat,
-      availableDevices: availableDevices,
+      availableDevices: effectiveDevices,
+      deviceList: deviceList,
       currentDeviceName: currentDeviceName,
+      currentDeviceKind: currentDeviceKind,
       minTemp: minTemp,
       weatherSummary: weatherSummary,
     );
@@ -135,6 +162,7 @@ class AiAssistantEngine {
   /// Kiểm tra API Key xem có kết nối tốt với Gemini hay không.
   static Future<bool> testApiKey(String apiKey) async {
     final key = apiKey.trim().isEmpty ? defaultGeminiApiKey : apiKey.trim();
+    if (key.isEmpty) return false;
     try {
       final url = Uri.parse(
           'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$key');
@@ -158,7 +186,7 @@ class AiAssistantEngine {
     }
   }
 
-  /// Bộ xử lý ngôn ngữ tự nhiên Local (Vietnamese Smart Parser).
+  /// Bộ xử lý ngôn ngữ tự nhiên Local (Vietnamese Smart Parser cho Điều hòa & TV).
   static AiResult _processLocally(
     String query, {
     required bool currentPower,
@@ -167,7 +195,9 @@ class AiAssistantEngine {
     required AcFan currentFan,
     required Map<Feat, bool> currentFeat,
     required List<String> availableDevices,
+    List<Map<String, Object?>>? deviceList,
     String? currentDeviceName,
+    String? currentDeviceKind,
     int minTemp = 16,
     String? weatherSummary,
   }) {
@@ -179,131 +209,385 @@ class AiAssistantEngine {
     AcMode? newMode;
     AcFan? newFan;
     final featChanges = <Feat, bool>{};
+    TvKey? targetTvKey;
+    int tvRepeat = 1;
     String? targetDevice;
+    String? targetKind = currentDeviceKind;
     bool isWeather = false;
 
     // 1. Kiểm tra hỏi thời tiết
-    if (q.contains('thời tiết') || q.contains('dự báo') || q.contains('trời hôm nay') || q.contains('ngoài trời')) {
+    if (q.contains('thời tiết') ||
+        q.contains('dự báo') ||
+        q.contains('trời hôm nay') ||
+        q.contains('ngoài trời') ||
+        q.contains('mưa không')) {
       isWeather = true;
     }
 
-    // 2. Kiểm tra đổi thiết bị
-    for (final dev in availableDevices) {
-      if (q.contains(dev.toLowerCase())) {
-        targetDevice = dev;
-        changes.add('Chuyển sang $dev');
-        break;
+    // 2. Nhận diện thiết bị đích
+    // A) Tìm theo tên thiết bị có trong danh sách
+    if (deviceList != null && deviceList.isNotEmpty) {
+      for (final dev in deviceList) {
+        final name = (dev['name'] as String? ?? '').toLowerCase();
+        if (name.isNotEmpty && q.contains(name)) {
+          targetDevice = dev['name'] as String;
+          targetKind = dev['kind'] as String? ?? 'ac';
+          changes.add('Chuyển sang $targetDevice');
+          break;
+        }
+      }
+    }
+    if (targetDevice == null) {
+      for (final dev in availableDevices) {
+        if (dev.isNotEmpty && q.contains(dev.toLowerCase())) {
+          targetDevice = dev;
+          changes.add('Chuyển sang $dev');
+          break;
+        }
       }
     }
 
-    // 3. Kiểm tra Nguồn (On / Off)
-    final isOnKeyword = q.contains('bật') || q.contains('mở') || q.contains('khởi động') || q.contains('chạy') || q.contains('on');
-    final isOffKeyword = q.contains('tắt') || q.contains('dừng') || q.contains('nghỉ') || q.contains('tắt đi') || q.contains('off');
+    // B) Phân loại thiết bị nếu câu lệnh chỉ định rõ loại thiết bị
+    final hasTvKeyword = q.contains('tv') || q.contains('tivi') || q.contains('ti vi');
+    final hasAcKeyword = q.contains('điều hòa') || q.contains('máy lạnh') || q.contains('may lanh');
 
-    if (isOffKeyword && !isOnKeyword) {
-      newPower = false;
-      changes.add('Tắt điều hòa');
-    } else if (isOnKeyword && !isOffKeyword) {
-      newPower = true;
-      changes.add('Bật điều hòa');
+    if (hasTvKeyword && !hasAcKeyword) {
+      targetKind = 'tv';
+      if (targetDevice == null && deviceList != null) {
+        final tvs = deviceList.where((d) => d['kind'] == 'tv');
+        if (tvs.isNotEmpty) targetDevice = tvs.first['name'] as String?;
+      }
+    } else if (hasAcKeyword && !hasTvKeyword) {
+      targetKind = 'ac';
+      if (targetDevice == null && deviceList != null) {
+        final acs = deviceList.where((d) => d['kind'] != 'tv');
+        if (acs.isNotEmpty) targetDevice = acs.first['name'] as String?;
+      }
     }
 
-    // 4. Kiểm tra Chế độ (Mode)
-    if (q.contains('làm lạnh') || q.contains('làm mát') || q.contains('mát') || q.contains('cool') || q.contains('chế độ lạnh')) {
-      newMode = AcMode.cool;
-      newPower = true;
-      changes.add('Chế độ Làm lạnh');
-    } else if (q.contains('sưởi') || q.contains('làm ấm') || q.contains('ấm') || q.contains('heat') || q.contains('chế độ sưởi')) {
-      newMode = AcMode.heat;
-      newPower = true;
-      changes.add('Chế độ Sưởi');
-    } else if (q.contains('hút ẩm') || q.contains('chống nồm') || q.contains('khô') || q.contains('dry') || q.contains('chế độ khô')) {
-      newMode = AcMode.dry;
-      newPower = true;
-      changes.add('Chế độ Hút ẩm');
-    } else if (q.contains('chỉ quạt') || q.contains('chế độ quạt') || (q.contains('quạt') && !q.contains('quạt nhẹ') && !q.contains('quạt mạnh') && !q.contains('quạt vừa') && !q.contains('quạt tự động'))) {
-      if (!q.contains('bật quạt') && !q.contains('quạt lớn') && !q.contains('quạt nhỏ')) {
-        newMode = AcMode.fan;
+    // 3. Phân biệt ngữ cảnh: Lệnh cho TV hay Điều hòa?
+    final isTvCommand = targetKind == 'tv' ||
+        hasTvKeyword ||
+        q.contains('âm lượng') ||
+        q.contains('kênh') ||
+        q.contains('mute') ||
+        q.contains('tắt tiếng') ||
+        q.contains('bật tiếng') ||
+        q.contains('câm tiếng') ||
+        q.contains('nguồn vào') ||
+        q.contains('cổng hdmi') ||
+        q.contains('đầu vào') ||
+        (q.contains('menu') && !q.contains('nhiệt')) ||
+        ((q.contains('to lên') || q.contains('nhỏ lại') || q.contains('to tiếng') || q.contains('nhỏ tiếng')) &&
+            !q.contains('quạt') && !q.contains('gió'));
+
+    if (isTvCommand) {
+      targetKind = 'tv';
+
+      // Kiểm tra các từ khóa âm lượng
+      final hasVolWord = q.contains('âm lượng') ||
+          q.contains('âm thanh') ||
+          q.contains('tiếng') ||
+          q.contains('volume') ||
+          q.contains('vol');
+
+      final isVolUp = (q.contains('tăng') ||
+              q.contains('to') ||
+              q.contains('lớn') ||
+              q.contains('cộng') ||
+              q.contains('thêm')) &&
+          hasVolWord;
+
+      final isVolDown = (q.contains('giảm') ||
+              q.contains('nhỏ') ||
+              q.contains('hạ') ||
+              q.contains('bớt') ||
+              q.contains('trừ')) &&
+          hasVolWord;
+
+      // 3.1. Âm lượng TV (Volume Up / Down)
+      if (isVolUp) {
+        targetTvKey = TvKey.volUp;
+        tvRepeat = _extractRepeatCount(q);
+        changes.add('Tăng âm lượng TV${tvRepeat > 1 ? " ($tvRepeat nấc)" : ""}');
+      } else if (isVolDown) {
+        targetTvKey = TvKey.volDown;
+        tvRepeat = _extractRepeatCount(q);
+        changes.add('Giảm âm lượng TV${tvRepeat > 1 ? " ($tvRepeat nấc)" : ""}');
+      }
+      // 3.2. Tắt tiếng / Bật tiếng (Mute)
+      else if (q.contains('tắt tiếng') ||
+          q.contains('tắt âm') ||
+          q.contains('mute') ||
+          q.contains('im lặng') ||
+          q.contains('bật tiếng') ||
+          q.contains('mở tiếng') ||
+          q.contains('câm tiếng')) {
+        targetTvKey = TvKey.mute;
+        changes.add('Tắt/Bật tiếng TV (Mute)');
+      }
+      // 3.3. Kênh (Channel Up / Down)
+      else if (q.contains('kênh trước') ||
+          q.contains('lùi kênh') ||
+          q.contains('xuống kênh') ||
+          q.contains('về kênh trước') ||
+          q.contains('ch down') ||
+          q.contains('channel down')) {
+        targetTvKey = TvKey.chDown;
+        tvRepeat = _extractRepeatCount(q);
+        changes.add('Về kênh trước');
+      } else if (q.contains('chuyển kênh') ||
+          q.contains('kênh tiếp theo') ||
+          q.contains('kênh sau') ||
+          q.contains('kênh tới') ||
+          q.contains('kênh kế tiếp') ||
+          q.contains('tăng kênh') ||
+          q.contains('lên kênh') ||
+          q.contains('ch up') ||
+          q.contains('channel up') ||
+          q.contains('đổi kênh')) {
+        targetTvKey = TvKey.chUp;
+        tvRepeat = _extractRepeatCount(q);
+        changes.add('Chuyển kênh tiếp theo');
+      }
+      // 3.4. Nguồn vào / Đầu vào (Input)
+      else if (q.contains('nguồn vào') ||
+          q.contains('đầu vào') ||
+          q.contains('cổng hdmi') ||
+          q.contains('chọn hdmi') ||
+          q.contains('chuyển cổng') ||
+          q.contains('input') ||
+          q.contains('cổng av')) {
+        targetTvKey = TvKey.input;
+        changes.add('Chuyển nguồn vào TV (Input)');
+      }
+      // 3.5. Menu
+      else if (q.contains('menu') || q.contains('cài đặt tv') || q.contains('danh mục tv')) {
+        targetTvKey = TvKey.menu;
+        changes.add('Mở Menu TV');
+      }
+      // 3.6. Điều hướng và OK, Back
+      else if (q.contains('bấm ok') ||
+          q.contains('chọn ok') ||
+          q.contains('enter') ||
+          q == 'ok' ||
+          q.contains('ok tv') ||
+          q.contains('chọn')) {
+        targetTvKey = TvKey.ok;
+        changes.add('Bấm OK');
+      } else if (q.contains('quay lại') || q.contains('trở về') || q.contains('back') || q.contains('thoát')) {
+        targetTvKey = TvKey.back;
+        changes.add('Quay lại (Back)');
+      } else if (q.contains('mũi tên lên') ||
+          q.contains('hướng lên') ||
+          q.contains('lên trên') ||
+          q.contains('đi lên') ||
+          q.contains('nút lên') ||
+          q == 'lên' ||
+          q.contains('bấm lên')) {
+        targetTvKey = TvKey.up;
+        changes.add('Lên trên');
+      } else if (q.contains('mũi tên xuống') ||
+          q.contains('hướng xuống') ||
+          q.contains('xuống dưới') ||
+          q.contains('đi xuống') ||
+          q.contains('nút xuống') ||
+          q == 'xuống' ||
+          q.contains('bấm xuống')) {
+        targetTvKey = TvKey.down;
+        changes.add('Xuống dưới');
+      } else if (q.contains('sang trái') ||
+          q.contains('mũi tên trái') ||
+          q.contains('qua trái') ||
+          q.contains('hướng trái') ||
+          q.contains('nút trái') ||
+          q == 'trái' ||
+          q.contains('bấm trái')) {
+        targetTvKey = TvKey.left;
+        changes.add('Sang trái');
+      } else if (q.contains('sang phải') ||
+          q.contains('mũi tên phải') ||
+          q.contains('qua phải') ||
+          q.contains('hướng phải') ||
+          q.contains('nút phải') ||
+          q == 'phải' ||
+          q.contains('bấm phải')) {
+        targetTvKey = TvKey.right;
+        changes.add('Sang phải');
+      }
+      // 3.7. Nguồn TV (Bật / Tắt)
+      else if (q.contains('tắt') || q.contains('dừng') || q.contains('nghỉ') || q.contains('off')) {
+        targetTvKey = TvKey.power;
+        newPower = false;
+        changes.add('Tắt TV');
+      } else if (q.contains('bật') ||
+          q.contains('mở') ||
+          q.contains('khởi động') ||
+          q.contains('chạy') ||
+          q.contains('on')) {
+        targetTvKey = TvKey.power;
         newPower = true;
-        changes.add('Chế độ Quạt');
+        changes.add('Bật TV');
       }
-    } else if (q.contains('tự động') || q.contains('tự chỉnh') || q.contains('auto')) {
-      newMode = AcMode.auto;
-      newPower = true;
-      changes.add('Chế độ Tự động');
-    }
-
-    // 5. Kiểm tra Tốc độ quạt (Fan speed)
-    if (q.contains('quạt nhẹ') || q.contains('quạt nhỏ') || q.contains('quạt yếu') || q.contains('hiu hiu') || q.contains('mức 1') || q.contains('quạt 1')) {
-      newFan = AcFan.low;
-      newPower = true;
-      changes.add('Quạt nhẹ');
-    } else if (q.contains('quạt vừa') || q.contains('quạt trung bình') || q.contains('mức 2') || q.contains('quạt 2')) {
-      newFan = AcFan.medium;
-      newPower = true;
-      changes.add('Quạt vừa');
-    } else if (q.contains('quạt mạnh') || q.contains('quạt lớn') || q.contains('tối đa') || q.contains('mức 3') || q.contains('quạt 3') || q.contains('quạt to')) {
-      newFan = AcFan.high;
-      newPower = true;
-      changes.add('Quạt mạnh');
-    } else if (q.contains('quạt tự động') || q.contains('fan auto') || q.contains('quạt auto')) {
-      newFan = AcFan.auto;
-      newPower = true;
-      changes.add('Quạt tự động');
-    }
-
-    // 6. Kiểm tra Nhiệt độ (Trực tiếp hoặc Tương đối)
-    final explicitTemp = _extractTempFromQuery(q, minTemp);
-    if (explicitTemp != null) {
-      newTemp = explicitTemp;
-      newPower = true;
-      changes.add('Nhiệt độ $newTemp°C');
     } else {
-      // Xử lý tăng / giảm tương đối
-      final delta = _extractTempDelta(q);
-      if (delta != 0) {
-        final target = (currentTemp + delta).clamp(minTemp, 30);
-        newTemp = target;
+      // 4. Lệnh cho Điều hòa (AC)
+      targetKind = 'ac';
+
+      // 4.1. Nguồn (On / Off)
+      final isOnKeyword = q.contains('bật') ||
+          q.contains('mở') ||
+          q.contains('khởi động') ||
+          q.contains('chạy') ||
+          q.contains('on');
+      final isOffKeyword = q.contains('tắt') ||
+          q.contains('dừng') ||
+          q.contains('nghỉ') ||
+          q.contains('tắt đi') ||
+          q.contains('off');
+
+      if (isOffKeyword && !isOnKeyword) {
+        newPower = false;
+        changes.add('Tắt điều hòa');
+      } else if (isOnKeyword && !isOffKeyword) {
         newPower = true;
-        changes.add('${delta > 0 ? "Tăng" : "Giảm"} nhiệt độ thành $newTemp°C');
-      } else if (q.contains('nóng quá') || q.contains('nóng quá trời') || q.contains('ngột ngạt')) {
-        final target = (currentTemp - 2).clamp(minTemp, 30);
-        newTemp = target;
+        changes.add('Bật điều hòa');
+      }
+
+      // 4.2. Chế độ (Mode)
+      if (q.contains('làm lạnh') ||
+          q.contains('làm mát') ||
+          q.contains('mát') ||
+          q.contains('cool') ||
+          q.contains('chế độ lạnh')) {
         newMode = AcMode.cool;
         newPower = true;
-        changes.add('Làm mát phòng: $newTemp°C, chế độ Làm lạnh');
-      } else if (q.contains('lạnh quá') || q.contains('rét quá') || q.contains('buốt quá')) {
-        final target = (currentTemp + 2).clamp(minTemp, 30);
-        newTemp = target;
+        changes.add('Chế độ Làm lạnh');
+      } else if (q.contains('sưởi') ||
+          q.contains('làm ấm') ||
+          q.contains('ấm') ||
+          q.contains('heat') ||
+          q.contains('chế độ sưởi')) {
+        newMode = AcMode.heat;
         newPower = true;
-        changes.add('Tăng nhiệt độ lên $newTemp°C cho bớt lạnh');
+        changes.add('Chế độ Sưởi');
+      } else if (q.contains('hút ẩm') ||
+          q.contains('chống nồm') ||
+          q.contains('khô') ||
+          q.contains('dry') ||
+          q.contains('chế độ khô')) {
+        newMode = AcMode.dry;
+        newPower = true;
+        changes.add('Chế độ Hút ẩm');
+      } else if (q.contains('chỉ quạt') ||
+          q.contains('chế độ quạt') ||
+          (q.contains('quạt') &&
+              !q.contains('quạt nhẹ') &&
+              !q.contains('quạt mạnh') &&
+              !q.contains('quạt vừa') &&
+              !q.contains('quạt tự động'))) {
+        if (!q.contains('bật quạt') && !q.contains('quạt lớn') && !q.contains('quạt nhỏ')) {
+          newMode = AcMode.fan;
+          newPower = true;
+          changes.add('Chế độ Quạt');
+        }
+      } else if (q.contains('tự động') || q.contains('tự chỉnh') || q.contains('auto')) {
+        newMode = AcMode.auto;
+        newPower = true;
+        changes.add('Chế độ Tự động');
+      }
+
+      // 4.3. Tốc độ quạt (Fan speed)
+      if (q.contains('quạt nhẹ') ||
+          q.contains('quạt nhỏ') ||
+          q.contains('quạt yếu') ||
+          q.contains('hiu hiu') ||
+          q.contains('mức 1') ||
+          q.contains('quạt 1')) {
+        newFan = AcFan.low;
+        newPower = true;
+        changes.add('Quạt nhẹ');
+      } else if (q.contains('quạt vừa') ||
+          q.contains('quạt trung bình') ||
+          q.contains('mức 2') ||
+          q.contains('quạt 2')) {
+        newFan = AcFan.medium;
+        newPower = true;
+        changes.add('Quạt vừa');
+      } else if (q.contains('quạt mạnh') ||
+          q.contains('quạt lớn') ||
+          q.contains('tối đa') ||
+          q.contains('mức 3') ||
+          q.contains('quạt 3') ||
+          q.contains('quạt to')) {
+        newFan = AcFan.high;
+        newPower = true;
+        changes.add('Quạt mạnh');
+      } else if (q.contains('quạt tự động') || q.contains('fan auto') || q.contains('quạt auto')) {
+        newFan = AcFan.auto;
+        newPower = true;
+        changes.add('Quạt tự động');
+      }
+
+      // 4.4. Nhiệt độ (Trực tiếp hoặc Tương đối)
+      final explicitTemp = _extractTempFromQuery(q, minTemp);
+      if (explicitTemp != null) {
+        newTemp = explicitTemp;
+        newPower = true;
+        changes.add('Nhiệt độ $newTemp°C');
+      } else {
+        // Xử lý tăng / giảm tương đối
+        final delta = _extractTempDelta(q);
+        if (delta != 0) {
+          final target = (currentTemp + delta).clamp(minTemp, 30);
+          newTemp = target;
+          newPower = true;
+          changes.add('${delta > 0 ? "Tăng" : "Giảm"} nhiệt độ thành $newTemp°C');
+        } else if (q.contains('nóng quá') || q.contains('nóng quá trời') || q.contains('ngột ngạt')) {
+          final target = (currentTemp - 2).clamp(minTemp, 30);
+          newTemp = target;
+          newMode = AcMode.cool;
+          newPower = true;
+          changes.add('Làm mát phòng: $newTemp°C, chế độ Làm lạnh');
+        } else if (q.contains('lạnh quá') || q.contains('rét quá') || q.contains('buốt quá')) {
+          final target = (currentTemp + 2).clamp(minTemp, 30);
+          newTemp = target;
+          newPower = true;
+          changes.add('Tăng nhiệt độ lên $newTemp°C cho bớt lạnh');
+        }
+      }
+
+      // 4.5. Tính năng thêm (Feat)
+      if (q.contains('đảo gió') ||
+          q.contains('cánh gió') ||
+          q.contains('xoay cánh') ||
+          q.contains('quay quạt') ||
+          q.contains('swing')) {
+        featChanges[Feat.swing] = true;
+        changes.add('Bật đảo gió');
+      }
+      if (q.contains('ngủ') || q.contains('ban đêm') || q.contains('sleep')) {
+        featChanges[Feat.sleep] = true;
+        changes.add('Bật chế độ ngủ');
+      }
+      if (q.contains('turbo') ||
+          q.contains('mát nhanh') ||
+          q.contains('làm lạnh nhanh') ||
+          q.contains('siêu tốc')) {
+        featChanges[Feat.turbo] = true;
+        changes.add('Bật Turbo làm lạnh nhanh');
+      }
+      if (q.contains('bật đèn')) {
+        featChanges[Feat.light] = true;
+        changes.add('Bật đèn màn hình');
+      } else if (q.contains('tắt đèn')) {
+        featChanges[Feat.light] = false;
+        changes.add('Tắt đèn màn hình');
       }
     }
 
-    // 7. Tính năng thêm (Feat)
-    if (q.contains('đảo gió') || q.contains('cánh gió') || q.contains('xoay cánh') || q.contains('quay quạt') || q.contains('swing')) {
-      featChanges[Feat.swing] = true;
-      changes.add('Bật đảo gió');
-    }
-    if (q.contains('ngủ') || q.contains('ban đêm') || q.contains('sleep')) {
-      featChanges[Feat.sleep] = true;
-      changes.add('Bật chế độ ngủ');
-    }
-    if (q.contains('turbo') || q.contains('mát nhanh') || q.contains('làm lạnh nhanh') || q.contains('siêu tốc')) {
-      featChanges[Feat.turbo] = true;
-      changes.add('Bật Turbo làm lạnh nhanh');
-    }
-    if (q.contains('bật đèn')) {
-      featChanges[Feat.light] = true;
-      changes.add('Bật đèn màn hình');
-    } else if (q.contains('tắt đèn')) {
-      featChanges[Feat.light] = false;
-      changes.add('Tắt đèn màn hình');
-    }
-
-    // Dựng câu trả lời
+    // Dựng câu trả lời phản hồi
     final String responseMsg;
-    final bool hasAction = changes.isNotEmpty;
+    final bool hasAction = changes.isNotEmpty || targetTvKey != null;
 
     if (isWeather) {
       final weatherInfo = weatherSummary ?? 'Chưa có thông tin thời tiết.';
@@ -315,7 +599,8 @@ class AiAssistantEngine {
     } else if (hasAction) {
       responseMsg = 'Đã nhận lệnh: ${changes.join(", ")}.';
     } else {
-      responseMsg = 'Chưa nhận diện được lệnh điều khiển cụ thể. Bạn thử nói: "Bật 24 độ làm lạnh", "Nóng quá hạ 2 độ", "Tắt điều hòa"...';
+      responseMsg =
+          'Chưa nhận diện được lệnh điều khiển cụ thể. Bạn thử nói:\n• Điều hòa: "Bật 24 độ làm lạnh", "Nóng quá hạ 2 độ", "Tắt điều hòa"\n• TV: "Bật TV", "Tăng âm lượng", "Tắt tiếng TV", "Chuyển kênh"';
     }
 
     return AiResult(
@@ -326,15 +611,48 @@ class AiAssistantEngine {
       mode: newMode,
       fan: newFan,
       featChanges: featChanges,
+      tvKey: targetTvKey,
+      tvRepeat: tvRepeat,
       targetDeviceName: targetDevice,
+      targetDeviceKind: targetKind,
       isWeatherQuery: isWeather,
       actionTaken: hasAction,
     );
   }
 
+  /// Trích xuất số lần lặp cho phím TV (ví dụ: "tăng 3 nấc" -> 3)
+  static int _extractRepeatCount(String q) {
+    // 1. Dạng: "3 nấc", "2 lần", "3 mức", "2 kênh"
+    final unitMatch = RegExp(r'(\d+)\s*(nấc|lần|mức|kênh|bước)').firstMatch(q);
+    if (unitMatch != null) {
+      final count = int.tryParse(unitMatch.group(1)!);
+      if (count != null && count >= 1 && count <= 10) return count;
+    }
+
+    // 2. Dạng liền kề: "tăng 3", "giảm 2"
+    final match = RegExp(r'(tăng|giảm|to|nhỏ|lên|xuống|chuyển|thêm|bớt)\s*(\d+)').firstMatch(q);
+    if (match != null) {
+      final count = int.tryParse(match.group(2)!);
+      if (count != null && count >= 1 && count <= 10) return count;
+    }
+
+    // 3. Chữ số tiếng Việt: "hai nấc", "ba nấc", "hai lần", "ba lần"
+    final wordNumbers = {
+      'một': 1, 'hai': 2, 'ba': 3, 'bốn': 4, 'tư': 4, 'năm': 5,
+    };
+    for (final e in wordNumbers.entries) {
+      if (q.contains('${e.key} nấc') ||
+          q.contains('${e.key} lần') ||
+          q.contains('${e.key} mức') ||
+          q.contains('${e.key} kênh')) {
+        return e.value;
+      }
+    }
+    return 1;
+  }
+
   /// Trích xuất nhiệt độ cụ thể từ câu (VD: "24 độ", "set 25°C", "hai mươi tư độ")
   static int? _extractTempFromQuery(String q, int minTemp) {
-    // Tìm số dạng chữ hoặc số
     final numMatch = RegExp(r'(\d+)\s*(độ|c|°)?').firstMatch(q);
     if (numMatch != null) {
       final val = int.tryParse(numMatch.group(1)!);
@@ -343,7 +661,6 @@ class AiAssistantEngine {
       }
     }
 
-    // Các từ ngữ chữ số thông dụng
     final wordsMap = {
       'mười tám': 18, 'mười chín': 19, 'hai mươi': 20,
       'hai mốt': 21, 'hai mươi mốt': 21,
@@ -382,6 +699,47 @@ class AiAssistantEngine {
     return isDecrease ? -amount : amount;
   }
 
+  static String _buildSystemPrompt({
+    required bool currentPower,
+    required int currentTemp,
+    required AcMode currentMode,
+    required AcFan currentFan,
+    required Map<Feat, bool> currentFeat,
+    required List<String> availableDevices,
+    List<Map<String, Object?>>? deviceList,
+    String? currentDeviceName,
+    String? currentDeviceKind,
+    int minTemp = 16,
+    String? weatherSummary,
+  }) {
+    final devListStr = deviceList != null
+        ? deviceList.map((d) => '${d['name']} (${d['kind'] == 'tv' ? 'TV' : 'Điều hòa'})').join(', ')
+        : availableDevices.join(', ');
+
+    return '''
+Bạn là trợ lý điều khiển nhà thông minh (Smart Home), hỗ trợ điều khiển toàn bộ thiết bị gồm Điều hòa (Gree, Coolix, LG, Midea, TCL, Samsung, Daikin, Panasonic) và TV (LG, Toshiba).
+Hãy phân tích yêu cầu tiếng Việt của người dùng và trả về kết quả định dạng JSON thuần túy (không dải markdown), chứa các trường:
+{
+  "device": string|null (tên thiết bị người dùng muốn chọn hoặc chuyển sang),
+  "device_kind": "ac"|"tv"|null,
+  "power": true|false|null (nguồn bật/tắt),
+  "temp": number|null (nhiệt độ điều hòa từ $minTemp đến 30),
+  "mode": "cool"|"heat"|"dry"|"fan"|"auto"|null,
+  "fan": "low"|"medium"|"high"|"auto"|null,
+  "swing": true|false|null,
+  "sleep": true|false|null,
+  "turbo": true|false|null,
+  "light": true|false|null,
+  "tv_key": "power"|"mute"|"volUp"|"volDown"|"chUp"|"chDown"|"input"|"up"|"down"|"left"|"right"|"ok"|"back"|"menu"|null,
+  "tv_repeat": number|null (số lần bấm phím TV nếu tăng/giảm nhiều nấc, ví dụ 1 đến 5),
+  "reply": "câu trả lời thân thiện cho người dùng"
+}
+Trạng thái thiết bị hiện tại: Loại ${currentDeviceKind ?? 'ac'}, Tên: ${currentDeviceName ?? 'Chưa rõ'}, Nguồn: ${currentPower ? 'BẬT' : 'TẮT'}, Nhiệt độ: $currentTemp°C, Chế độ: ${currentMode.name}, Quạt: ${currentFan.name}.
+Danh sách thiết bị sẵn có trong nhà: $devListStr.
+Thời tiết ngoài trời: ${weatherSummary ?? 'Không có'}.
+''';
+  }
+
   /// Xử lý qua Gemini REST API nếu có API key
   static Future<AiResult?> _processWithGemini(
     String query, {
@@ -391,29 +749,26 @@ class AiAssistantEngine {
     required AcFan currentFan,
     required Map<Feat, bool> currentFeat,
     required List<String> availableDevices,
+    List<Map<String, Object?>>? deviceList,
     String? currentDeviceName,
+    String? currentDeviceKind,
     int minTemp = 16,
     required String apiKey,
     String? weatherSummary,
   }) async {
-    final systemPrompt = '''
-Bạn là trợ lý điều khiển điều hòa thông minh. Hãy phân tích yêu cầu tiếng Việt của người dùng và trả về kết quả định dạng JSON thuần túy (không dải markdown), chứa các trường:
-{
-  "power": true|false|null (bật/tắt nguồn),
-  "temp": number|null (nhiệt độ từ $minTemp đến 30),
-  "mode": "cool"|"heat"|"dry"|"fan"|"auto"|null,
-  "fan": "low"|"medium"|"high"|"auto"|null,
-  "swing": true|false|null,
-  "sleep": true|false|null,
-  "turbo": true|false|null,
-  "light": true|false|null,
-  "device": string|null (tên thiết bị nếu người dùng yêu cầu chuyển thiết bị),
-  "reply": "câu trả lời thân thiện cho người dùng"
-}
-Trạng thái hiện tại: Nguồn ${currentPower ? "BẬT" : "TẮT"}, Nhiệt độ $currentTemp°C, Chế độ ${currentMode.name}, Quạt ${currentFan.name}, Thiết bị hiện tại: ${currentDeviceName ?? "Chưa rõ"}.
-Danh sách thiết bị sẵn có: ${availableDevices.join(", ")}.
-Thời tiết ngoài trời: ${weatherSummary ?? "Không có"}.
-''';
+    final systemPrompt = _buildSystemPrompt(
+      currentPower: currentPower,
+      currentTemp: currentTemp,
+      currentMode: currentMode,
+      currentFan: currentFan,
+      currentFeat: currentFeat,
+      availableDevices: availableDevices,
+      deviceList: deviceList,
+      currentDeviceName: currentDeviceName,
+      currentDeviceKind: currentDeviceKind,
+      minTemp: minTemp,
+      weatherSummary: weatherSummary,
+    );
 
     final url = Uri.parse(
         'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$apiKey');
@@ -452,30 +807,27 @@ Thời tiết ngoài trời: ${weatherSummary ?? "Không có"}.
     required AcFan currentFan,
     required Map<Feat, bool> currentFeat,
     required List<String> availableDevices,
+    List<Map<String, Object?>>? deviceList,
     String? currentDeviceName,
+    String? currentDeviceKind,
     int minTemp = 16,
     required String apiKey,
     String? openRouterModel,
     String? weatherSummary,
   }) async {
-    final systemPrompt = '''
-Bạn là trợ lý điều khiển điều hòa thông minh. Hãy phân tích yêu cầu tiếng Việt của người dùng và trả về kết quả định dạng JSON thuần túy (không dải markdown), chứa các trường:
-{
-  "power": true|false|null (bật/tắt nguồn),
-  "temp": number|null (nhiệt độ từ $minTemp đến 30),
-  "mode": "cool"|"heat"|"dry"|"fan"|"auto"|null,
-  "fan": "low"|"medium"|"high"|"auto"|null,
-  "swing": true|false|null,
-  "sleep": true|false|null,
-  "turbo": true|false|null,
-  "light": true|false|null,
-  "device": string|null (tên thiết bị nếu người dùng yêu cầu chuyển thiết bị),
-  "reply": "câu trả lời thân thiện cho người dùng"
-}
-Trạng thái hiện tại: Nguồn ${currentPower ? "BẬT" : "TẮT"}, Nhiệt độ $currentTemp°C, Chế độ ${currentMode.name}, Quạt ${currentFan.name}, Thiết bị hiện tại: ${currentDeviceName ?? "Chưa rõ"}.
-Danh sách thiết bị sẵn có: ${availableDevices.join(", ")}.
-Thời tiết ngoài trời: ${weatherSummary ?? "Không có"}.
-''';
+    final systemPrompt = _buildSystemPrompt(
+      currentPower: currentPower,
+      currentTemp: currentTemp,
+      currentMode: currentMode,
+      currentFan: currentFan,
+      currentFeat: currentFeat,
+      availableDevices: availableDevices,
+      deviceList: deviceList,
+      currentDeviceName: currentDeviceName,
+      currentDeviceKind: currentDeviceKind,
+      minTemp: minTemp,
+      weatherSummary: weatherSummary,
+    );
 
     final model = (openRouterModel != null && openRouterModel.trim().isNotEmpty)
         ? openRouterModel.trim()
@@ -489,7 +841,7 @@ Thời tiết ngoài trời: ${weatherSummary ?? "Không có"}.
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ${apiKey.trim()}',
         'HTTP-Referer': 'https://com.example.test2',
-        'X-Title': 'AC Remote App',
+        'X-Title': 'Smart Home Remote App',
       },
       body: jsonEncode({
         'model': model,
@@ -526,7 +878,7 @@ Thời tiết ngoài trời: ${weatherSummary ?? "Không có"}.
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $key',
           'HTTP-Referer': 'https://com.example.test2',
-          'X-Title': 'AC Remote App',
+          'X-Title': 'Smart Home Remote App',
         },
         body: jsonEncode({
           'model': targetModel,
@@ -567,12 +919,28 @@ Thời tiết ngoài trời: ${weatherSummary ?? "Không có"}.
       if (map['turbo'] != null) featChanges[Feat.turbo] = map['turbo'] == true;
       if (map['light'] != null) featChanges[Feat.light] = map['light'] == true;
 
+      // Phím TV
+      TvKey? parsedTvKey;
+      final rawTvKey = map['tv_key'] as String?;
+      if (rawTvKey != null) {
+        for (final k in TvKey.values) {
+          if (k.name.toLowerCase() == rawTvKey.toLowerCase()) {
+            parsedTvKey = k;
+            break;
+          }
+        }
+      }
+      final int tvRepeat = (map['tv_repeat'] as num?)?.toInt().clamp(1, 10) ?? 1;
+
       final targetDev = map['device'] as String?;
+      final targetKind = map['device_kind'] as String?;
+
       final bool action = map['power'] != null ||
           map['temp'] != null ||
           parsedMode != null ||
           parsedFan != null ||
           featChanges.isNotEmpty ||
+          parsedTvKey != null ||
           targetDev != null;
 
       return AiResult(
@@ -583,7 +951,10 @@ Thời tiết ngoài trời: ${weatherSummary ?? "Không có"}.
         mode: parsedMode,
         fan: parsedFan,
         featChanges: featChanges,
+        tvKey: parsedTvKey,
+        tvRepeat: tvRepeat,
         targetDeviceName: targetDev,
+        targetDeviceKind: targetKind,
         actionTaken: action,
       );
     } catch (_) {
@@ -592,7 +963,7 @@ Thời tiết ngoài trời: ${weatherSummary ?? "Không có"}.
   }
 }
 
-/// Modal Bottom Sheet giao diện Trợ lý Giọng nói AI.
+/// Modal Bottom Sheet giao diện Trợ lý Giọng nói AI (cho toàn bộ thiết bị).
 class AiAssistantSheet extends StatefulWidget {
   final bool currentPower;
   final int currentTemp;
@@ -600,7 +971,9 @@ class AiAssistantSheet extends StatefulWidget {
   final AcFan currentFan;
   final Map<Feat, bool> currentFeat;
   final List<String> availableDevices;
+  final List<Map<String, Object?>>? deviceList;
   final String? currentDeviceName;
+  final String? currentDeviceKind; // 'ac' hoặc 'tv'
   final int minTemp;
   final String aiProvider;
   final String? apiKey;
@@ -610,13 +983,15 @@ class AiAssistantSheet extends StatefulWidget {
 
   const AiAssistantSheet({
     super.key,
-    required this.currentPower,
-    required this.currentTemp,
-    required this.currentMode,
-    required this.currentFan,
-    required this.currentFeat,
-    required this.availableDevices,
+    this.currentPower = false,
+    this.currentTemp = 26,
+    this.currentMode = AcMode.cool,
+    this.currentFan = AcFan.auto,
+    this.currentFeat = const {},
+    this.availableDevices = const [],
+    this.deviceList,
     this.currentDeviceName,
+    this.currentDeviceKind,
     this.minTemp = 16,
     this.aiProvider = 'gemini',
     this.apiKey,
@@ -698,7 +1073,6 @@ class _AiAssistantSheetState extends State<AiAssistantSheet>
       } else if (type == 'error') {
         final capturedText = _speechText.trim();
         if (capturedText.isNotEmpty && _isListening) {
-          // Đã thu được văn bản từ giọng nói trước khi bị hết giờ -> dùng luôn!
           _processQuery(capturedText);
         } else {
           setState(() {
@@ -748,7 +1122,6 @@ class _AiAssistantSheetState extends State<AiAssistantSheet>
 
     final capturedText = _speechText.trim();
     if (capturedText.isNotEmpty) {
-      // Đã có câu chữ thu được -> xử lý ngay câu lệnh
       _processQuery(capturedText);
     } else {
       setState(() {
@@ -779,7 +1152,9 @@ class _AiAssistantSheetState extends State<AiAssistantSheet>
       currentFan: widget.currentFan,
       currentFeat: widget.currentFeat,
       availableDevices: widget.availableDevices,
+      deviceList: widget.deviceList,
       currentDeviceName: widget.currentDeviceName,
+      currentDeviceKind: widget.currentDeviceKind,
       minTemp: widget.minTemp,
       aiProvider: widget.aiProvider,
       apiKey: widget.apiKey,
@@ -795,13 +1170,14 @@ class _AiAssistantSheetState extends State<AiAssistantSheet>
       _statusMessage = res.response;
     });
 
-    // Áp dụng thay đổi cho màn chính
+    // Áp dụng thay đổi cho giao diện gọi nó
     widget.onResultApplied(res);
   }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isTv = widget.currentDeviceKind == 'tv';
 
     return Padding(
       padding: EdgeInsets.only(
@@ -834,9 +1210,11 @@ class _AiAssistantSheetState extends State<AiAssistantSheet>
                 children: [
                   Icon(Icons.auto_awesome, color: cs.primary),
                   const SizedBox(width: 8),
-                  const Text(
-                    'Trợ lý Giọng nói AI',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  Text(
+                    widget.currentDeviceName != null
+                        ? 'Trợ lý AI · ${widget.currentDeviceName}'
+                        : 'Trợ lý Giọng nói AI',
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                 ],
               ),
@@ -963,15 +1341,29 @@ class _AiAssistantSheetState extends State<AiAssistantSheet>
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
-                children: [
-                  _chip('❄️ Bật 24°C làm lạnh', 'Bật 24 độ chế độ làm lạnh'),
-                  _chip('☀️ Nóng quá hạ 2°C', 'Nóng quá hạ 2 độ'),
-                  _chip('🔥 Bật sưởi 28°C', 'Bật sưởi 28 độ quạt mạnh'),
-                  _chip('🌙 Bật chế độ ngủ', 'Bật chế độ ngủ'),
-                  _chip('🌀 Bật đảo gió', 'Bật đảo gió'),
-                  _chip('🌤️ Thời tiết hôm nay?', 'Thời tiết hôm nay thế nào'),
-                  _chip('🛑 Tắt điều hòa', 'Tắt điều hòa đi'),
-                ],
+                children: isTv
+                    ? [
+                        _chip('📺 Bật / Tắt TV', 'Bật TV'),
+                        _chip('🔊 Tăng âm lượng', 'Tăng âm lượng TV'),
+                        _chip('🔉 Giảm 3 nấc', 'Giảm 3 nấc âm lượng'),
+                        _chip('🔇 Tắt tiếng', 'Tắt tiếng TV'),
+                        _chip('⏭️ Chuyển kênh', 'Chuyển kênh tiếp theo'),
+                        _chip('⏮️ Kênh trước', 'Về kênh trước'),
+                        _chip('📋 Menu', 'Mở menu TV'),
+                        _chip('🔌 Nguồn vào HDMI', 'Chuyển nguồn vào TV'),
+                        _chip('❄️ Bật điều hòa', 'Bật điều hòa 24 độ'),
+                      ]
+                    : [
+                        _chip('❄️ Bật 24°C làm lạnh', 'Bật 24 độ chế độ làm lạnh'),
+                        _chip('☀️ Nóng quá hạ 2°C', 'Nóng quá hạ 2 độ'),
+                        _chip('🔥 Bật sưởi 28°C', 'Bật sưởi 28 độ quạt mạnh'),
+                        _chip('🌙 Chế độ ngủ', 'Bật chế độ ngủ'),
+                        _chip('🌀 Đảo gió', 'Bật đảo gió'),
+                        _chip('📺 Bật TV', 'Bật TV'),
+                        _chip('🔊 Tăng âm lượng TV', 'Tăng âm lượng TV'),
+                        _chip('🌤️ Thời tiết?', 'Thời tiết hôm nay thế nào'),
+                        _chip('🛑 Tắt điều hòa', 'Tắt điều hòa đi'),
+                      ],
               ),
               const SizedBox(height: 16),
 

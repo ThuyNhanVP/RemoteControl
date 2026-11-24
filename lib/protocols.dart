@@ -529,3 +529,84 @@ List<int> electraPattern(List<int> b) {
   p.add(646);
   return p;
 }
+
+/// Dựng lệnh IR điều hòa hoàn chỉnh cho bất kỳ giao thức nào được hỗ trợ.
+IrCmd buildAcCmd(
+  Proto p,
+  bool on, {
+  AcMode mode = AcMode.cool,
+  int temp = 26,
+  AcFan fan = AcFan.auto,
+  bool swing = false,
+  bool sleep = false,
+  bool turbo = false,
+  bool light = true,
+  bool powerChange = true,
+}) {
+  switch (p) {
+    case Proto.midea:
+      final b = mideaState(on: on, mode: mode, temp: temp, fan: fan, sleep: sleep);
+      return IrCmd(mideaPattern(b), hexBytes(b));
+    case Proto.tcl:
+      final b = tclState(
+        on: on,
+        mode: mode,
+        temp: temp,
+        fan: fan,
+        swing: swing,
+        turbo: turbo,
+        light: light,
+      );
+      return IrCmd(tclPattern(b), hexBytes(b));
+    case Proto.samsung:
+      if (!on) return IrCmd(samsungPattern(samsungOff), hexBytes(samsungOff));
+      final b = samsungState(on: true, mode: mode, temp: temp, fan: fan, swing: swing);
+      final out = powerChange ? samsungExtended(b) : b;
+      return IrCmd(samsungPattern(out), hexBytes(out));
+    case Proto.daikin:
+      final b = daikinState(
+        on: on,
+        mode: mode,
+        temp: temp,
+        fan: fan,
+        swing: swing,
+        powerful: turbo,
+      );
+      return IrCmd(daikinPattern(b), hexBytes(b));
+    case Proto.panasonic:
+      final b = panasonicState(
+        on: on,
+        mode: mode,
+        temp: temp,
+        fan: fan,
+        swing: swing,
+        powerful: turbo,
+      );
+      return IrCmd(panasonicPattern(b), hexBytes(b), freq: 36700);
+    case Proto.gree:
+    case Proto.greeB:
+      final b = greeState(
+        on: on,
+        mode: mode,
+        temp: temp,
+        fan: fan,
+        swing: swing,
+        modelA: p == Proto.gree,
+        sleep: sleep,
+        turbo: turbo,
+        light: light,
+      );
+      return IrCmd(greePattern(b), hexBytes(b));
+    case Proto.coolix:
+      final c = coolixFrame(on: on, mode: mode, temp: temp, fan: fan);
+      return IrCmd(coolixPattern(c), hexInt(c));
+    case Proto.lg1:
+    case Proto.lg2:
+      final c = lgFrame(on: on, mode: mode, temp: temp, fan: fan);
+      return IrCmd(lgPattern(c, lg2: p == Proto.lg2), hexInt(c));
+    case Proto.electra:
+      final b = electraState(on: on, mode: mode, temp: temp, fan: fan, swing: swing, turbo: turbo);
+      return IrCmd(electraPattern(b), hexBytes(b));
+  }
+}
+
