@@ -10,9 +10,9 @@ enum AcFan { low, medium, high, auto }
 enum Feat { swing, sleep, turbo, light }
 
 /// Các giao thức điều hòa app hỗ trợ.
-/// Casper: thử lần lượt gree, greeB, coolix.
+/// Casper: thử lần lượt gree, greeB, coolix; máy dùng remote mã YKR-… thử electra.
 /// Chỉ được THÊM vào cuối (tên đã lưu trong SQLite theo tên enum).
-enum Proto { gree, greeB, coolix, lg1, lg2, midea, tcl, samsung, daikin, panasonic }
+enum Proto { gree, greeB, coolix, lg1, lg2, midea, tcl, samsung, daikin, panasonic, electra }
 
 int clampInt(int v, int lo, int hi) => v < lo ? lo : (v > hi ? hi : v);
 
@@ -494,5 +494,38 @@ List<int> panasonicPattern(List<int> b) {
     p.add(432);
     if (k == 0) p.add(10000);
   }
+  return p;
+}
+
+// Electra (thư viện IRremoteESP8266 ir_Electra.cpp; gồm remote AUX và các remote mã YKR-…).
+// Khung 13 byte, bit thấp trước, byte 12 là tổng byte 0 đến 11.
+const _elMode = {AcMode.auto: 0, AcMode.cool: 1, AcMode.dry: 2, AcMode.heat: 4, AcMode.fan: 6};
+const _elFan = {AcFan.auto: 5, AcFan.low: 3, AcFan.medium: 2, AcFan.high: 1};
+
+List<int> electraState({
+  required bool on,
+  required AcMode mode,
+  required int temp,
+  required AcFan fan,
+  bool swing = false,
+  bool turbo = false,
+}) {
+  final b = List<int>.filled(13, 0);
+  b[0] = 0xC3;
+  b[1] = (swing ? 0 : 7) | ((clampInt(temp, 16, 32) - 8) << 3); // đảo gió dọc: 0 bật, 7 tắt
+  b[2] = 7 << 5; // đảo gió ngang luôn tắt
+  b[4] = _elFan[fan]! << 5;
+  if (turbo) b[5] |= 0x40;
+  b[6] = _elMode[mode]! << 5;
+  if (on) b[9] |= 0x20;
+  b[11] = 0x08; // đèn: giá trị "tắt" mặc định của thư viện
+  b[12] = _sumBytes(b, 0, 12);
+  return b;
+}
+
+List<int> electraPattern(List<int> b) {
+  final p = <int>[9166, 4470];
+  _addBytesLsb(p, b, 646, 1647, 547);
+  p.add(646);
   return p;
 }

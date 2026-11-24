@@ -34,6 +34,7 @@ const protoLabel = {
   Proto.samsung: 'Samsung',
   Proto.daikin: 'Daikin',
   Proto.panasonic: 'Panasonic',
+  Proto.electra: 'Electra (AUX/YKR)',
 };
 
 const modeLabel = {
@@ -254,6 +255,7 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
         return {Feat.swing};
       case Proto.daikin:
       case Proto.panasonic:
+      case Proto.electra:
         return {Feat.swing, Feat.turbo};
     }
   }
@@ -369,6 +371,16 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
           powerful: feat[Feat.turbo]!,
         );
         return IrCmd(panasonicPattern(b), hexBytes(b), freq: 36700);
+      case Proto.electra:
+        final b = electraState(
+          on: on,
+          mode: mode,
+          temp: temp,
+          fan: fan,
+          swing: feat[Feat.swing]!,
+          turbo: feat[Feat.turbo]!,
+        );
+        return IrCmd(electraPattern(b), hexBytes(b));
       default:
         break;
     }
