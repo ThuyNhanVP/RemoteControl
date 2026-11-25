@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'ai_assistant.dart';
 import 'db.dart';
 import 'main.dart' show sendIr;
+import 'settings.dart';
 
 enum TvBrand { lg, toshiba }
 
@@ -108,6 +110,38 @@ class _TvPageState extends State<TvPage> {
     } catch (e) {
       if (mounted) setState(() => status = 'Không gửi được: $e');
     }
+  }
+
+  Future<void> _openAiAssistant() async {
+    final ai = await AiConfig.load();
+    final allDevices = await Db.devices();
+
+    if (!mounted) return;
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => AiAssistantSheet(
+        currentDeviceName: name,
+        currentDeviceKind: 'tv',
+        deviceList: allDevices,
+        availableDevices: allDevices.map((d) => (d['name'] as String?) ?? '').toList(),
+        aiProvider: ai.provider,
+        apiKey: ai.apiKey,
+        openRouterModel: ai.model,
+        onResultApplied: (res) async {
+          if (res.tvKey != null) {
+            for (var i = 0; i < res.tvRepeat; i++) {
+              await _press(res.tvKey!);
+              if (res.tvRepeat > 1 && i < res.tvRepeat - 1) {
+                await Future.delayed(const Duration(milliseconds: 150));
+              }
+            }
+          }
+        },
+      ),
+    );
   }
 
   static const _glass = Color(0x26FFFFFF);
@@ -232,6 +266,11 @@ class _TvPageState extends State<TvPage> {
                       child: Text(title,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(color: Colors.white, fontSize: 16)),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.auto_awesome, color: Colors.white),
+                      onPressed: _openAiAssistant,
+                      tooltip: 'Trợ lý AI',
                     ),
                   ],
                 ),

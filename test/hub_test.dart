@@ -1,4 +1,5 @@
 // Chạy: flutter test
+import 'dart:ui';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:test2/hub.dart';
 
@@ -37,5 +38,24 @@ void main() {
     expect(heartBeat(0.04 / 3), greaterThan(0.9));
     expect(heartBeat(0.2 / 3), greaterThan(0.5));
     expect(heartBeat(0.2), lessThan(0.05)); // giữa hai chu kỳ là lúc nghỉ
+  });
+
+  test('separate: thiết bị chồng nhau bị đẩy ra, thiết bị đang kéo đứng yên', () {
+    const hub = Offset(200, 300);
+    final bounds = Rect.fromLTRB(40, 80, 360, 560);
+    final out = separate([const Offset(100, 450), const Offset(110, 450)], hub: hub, bounds: bounds, pinned: 0);
+    expect(out[0], const Offset(100, 450));
+    expect((out[1] - out[0]).distance, greaterThanOrEqualTo(83.9));
+  });
+
+  test('separate: không vào sát nút giữa, luôn nằm trong khung, chỗ thoáng thì giữ nguyên', () {
+    const hub = Offset(200, 300);
+    final bounds = Rect.fromLTRB(40, 80, 360, 560);
+    final out = separate([const Offset(205, 305), const Offset(500, 900)], hub: hub, bounds: bounds);
+    expect((out[0] - hub).distance, greaterThanOrEqualTo(87.9));
+    expect(out[1].dx, inInclusiveRange(bounds.left, bounds.right));
+    expect(out[1].dy, inInclusiveRange(bounds.top, bounds.bottom));
+    final far = [const Offset(100, 450), const Offset(300, 450)];
+    expect(separate(far, hub: hub, bounds: bounds), far);
   });
 }

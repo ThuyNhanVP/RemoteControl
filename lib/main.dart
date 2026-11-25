@@ -6,8 +6,9 @@ import 'db.dart';
 import 'firebase_sync.dart';
 import 'hub.dart';
 import 'protocols.dart';
+import 'settings.dart';
 import 'weather.dart';
-import 'secrets.dart';
+import 'tv.dart';
 
 // ====== Giao tiếp hồng ngoại (gọi sang Kotlin) ======
 const _ch = MethodChannel('ir');
@@ -220,10 +221,6 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
   bool probing = false;
   bool showSettings = false;
   String status = '';
-  String aiProvider = 'gemini';
-  String? geminiApiKey;
-  String? openRouterApiKey;
-  String openRouterModel = 'meta-llama/llama-3.3-70b-instruct:free';
   final hex = TextEditingController(text: 'B27BE0');
   int? deviceId; // thiết bị đang dùng (khóa trong bảng devices)
   String deviceName = 'Điều hòa';
@@ -564,11 +561,6 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
 
   Future<void> _loadDb() async {
     try {
-      final provider = await Db.getMeta('ai_provider') ?? 'gemini';
-      final gKey = await Db.getMeta('gemini_api_key');
-      final oKey = await Db.getMeta('openrouter_api_key');
-      final oModel = await Db.getMeta('openrouter_model') ?? openRouterFreeModels.first;
-
       var list = await Db.devices(kind: 'ac');
       if (list.isEmpty) {
         await Db.addDevice(_newDeviceMap('Điều hòa'));
@@ -576,21 +568,17 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
       }
       final lastId = widget.deviceId ?? int.tryParse(await Db.getMeta('last_device') ?? '');
       final cur = list.firstWhere((d) => d['id'] == lastId, orElse: () => list.first);
-      if (mounted) {
-        setState(() {
-          aiProvider = provider;
-          geminiApiKey = (gKey != null && gKey.isNotEmpty) ? gKey : defaultGeminiApiKey;
-          openRouterApiKey = (oKey != null && oKey.isNotEmpty) ? oKey : defaultOpenRouterApiKey;
-          openRouterModel = oModel;
-        });
-      }
       await _useDevice(cur, list: list);
     } catch (e) {
       if (mounted) setState(() => status = 'Lỗi CSDL: $e');
     }
   }
 
-  void _openAiAssistant() {
+  Future<void> _openAiAssistant() async {
+    final allDevs = await Db.devices();
+    final ai = await AiConfig.load();
+    if (!mounted) return;
+
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -601,25 +589,72 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
         currentMode: mode,
         currentFan: fan,
         currentFeat: feat,
-        availableDevices: devices.map((d) => (d['name'] as String?) ?? 'Điều hòa').toList(),
+        deviceList: allDevs,
+        availableDevices: allDevs.map((d) => (d['name'] as String?) ?? 'Điều hòa').toList(),
         currentDeviceName: deviceName,
+        currentDeviceKind: 'ac',
         minTemp: _minTemp,
-        aiProvider: aiProvider,
-        apiKey: aiProvider == 'openrouter' ? openRouterApiKey : geminiApiKey,
-        openRouterModel: openRouterModel,
+        aiProvider: ai.provider,
+        apiKey: ai.apiKey,
+        openRouterModel: ai.model,
         onResultApplied: _applyAiResult,
       ),
     );
   }
 
   Future<void> _applyAiResult(AiResult res) async {
+    // Nếu lệnh dành cho TV
+    if (res.tvKey != null) {
+      final tvs = await Db.devices(kind: 'tv');
+      Map<String, Object?>? targetTv;
+      if (res.targetDeviceName != null) {
+        final matches = tvs.where(
+            (d) => (d['name'] as String).toLowerCase() == res.targetDeviceName!.toLowerCase());
+        if (matches.isNotEmpty) targetTv = matches.first;
+      }
+      targetTv ??= tvs.isNotEmpty ? tvs.first : null;
+      if (targetTv != null) {
+        final brand = tvBrandOf(targetTv['proto']);
+        for (var i = 0; i < res.tvRepeat; i++) {
+          await sendIr(tvPattern(brand, res.tvKey!));
+          if (res.tvRepeat > 1 && i < res.tvRepeat - 1) {
+            await Future.delayed(const Duration(milliseconds: 150));
+          }
+        }
+        await Db.setMeta('last_ctrl', '${targetTv['id']}');
+        if (res.tvKey == TvKey.power) {
+          final curOn = await Db.getMeta('powered_${targetTv['id']}') == '1';
+          await Db.setMeta('powered_${targetTv['id']}', curOn ? '0' : '1');
+        }
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Đã gửi lệnh TV [${targetTv['name']}]: ${res.response}'),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+      return;
+    }
+
     if (res.targetDeviceName != null) {
-      final target = devices.firstWhere(
+      final allDevs = await Db.devices();
+      final target = allDevs.firstWhere(
         (d) => (d['name'] as String).toLowerCase() == res.targetDeviceName!.toLowerCase(),
         orElse: () => <String, Object?>{},
       );
       if (target.isNotEmpty) {
-        await _useDevice(target);
+        if (target['kind'] == 'tv') {
+          if (mounted) {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute<void>(builder: (_) => TvPage(deviceId: target['id'] as int)),
+            );
+          }
+          return;
+        } else {
+          await _useDevice(target);
+        }
       }
     }
 
@@ -909,7 +944,7 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
         Expanded(
           child: showSettings
               ? const Text(
-            'Cài đặt',
+            'Cài đặt thiết bị',
             style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
           )
               : InkWell(
@@ -1180,8 +1215,6 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
       children: [
         Text('IR: ${ir == null ? "đang kiểm tra..." : (ir! ? "CÓ" : "KHÔNG")}'),
         const SizedBox(height: 12),
-        const SyncCard(),
-        const SizedBox(height: 16),
         const Text('Giao thức (cùng một hãng có thể dùng giao thức khác nhau: cứ thử lần lượt)'),
         const SizedBox(height: 4),
         Wrap(
@@ -1227,149 +1260,9 @@ class _AcPageState extends State<AcPage> with WidgetsBindingObserver {
             child: const Text('Gửi mã thô'),
           ),
         ],
-        const SizedBox(height: 24),
-        const Divider(),
-        const Text('Cấu hình Trợ lý AI (Tùy chọn)', style: TextStyle(fontWeight: FontWeight.bold)),
-        const SizedBox(height: 4),
-        const Text(
-          'Chọn dịch vụ AI Cloud (Gemini hoặc OpenRouter với các mô hình miễn phí):',
-          style: TextStyle(fontSize: 12, color: Colors.black54),
-        ),
-        const SizedBox(height: 10),
-        SegmentedButton<String>(
-          segments: const [
-            ButtonSegment(value: 'gemini', label: Text('Google Gemini')),
-            ButtonSegment(value: 'openrouter', label: Text('OpenRouter (Free)')),
-          ],
-          selected: {aiProvider},
-          onSelectionChanged: (set) {
-            final val = set.first;
-            setState(() => aiProvider = val);
-            Db.setMeta('ai_provider', val);
-          },
-        ),
-        const SizedBox(height: 14),
-        if (aiProvider == 'openrouter') ...[
-          const Text('Chọn mô hình OpenRouter Miễn Phí:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 6),
-          DropdownButtonFormField<String>(
-            initialValue: openRouterFreeModels.contains(openRouterModel) ? openRouterModel : openRouterFreeModels.first,
-            decoration: const InputDecoration(
-              border: OutlineInputBorder(),
-              filled: true,
-              fillColor: Colors.white,
-              isDense: true,
-            ),
-            items: [
-              for (final m in openRouterFreeModels)
-                DropdownMenuItem(
-                  value: m,
-                  child: Text(m.replaceAll(':free', ' (Miễn phí)'), style: const TextStyle(fontSize: 13)),
-                ),
-            ],
-            onChanged: (val) {
-              if (val != null) {
-                setState(() => openRouterModel = val);
-                Db.setMeta('openrouter_model', val);
-              }
-            },
-          ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: TextEditingController(text: openRouterApiKey ?? ''),
-            decoration: const InputDecoration(
-              labelText: 'OpenRouter API Key',
-              hintText: 'Nhập sk-or-v1-...',
-              border: OutlineInputBorder(),
-              filled: true,
-              fillColor: Colors.white,
-              isDense: true,
-            ),
-            onChanged: (val) {
-              openRouterApiKey = val.trim();
-              Db.setMeta('openrouter_api_key', val.trim());
-            },
-          ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: _testOpenRouterApiKey,
-            icon: const Icon(Icons.verified_outlined),
-            label: const Text('Kiểm tra OpenRouter API Key'),
-          ),
-        ] else ...[
-          TextField(
-            controller: TextEditingController(text: geminiApiKey ?? ''),
-            decoration: const InputDecoration(
-              labelText: 'Gemini API Key',
-              border: OutlineInputBorder(),
-              filled: true,
-              fillColor: Colors.white,
-              isDense: true,
-            ),
-            onChanged: (val) {
-              geminiApiKey = val.trim();
-              Db.setMeta('gemini_api_key', val.trim());
-            },
-          ),
-          const SizedBox(height: 8),
-          OutlinedButton.icon(
-            onPressed: _testGeminiApiKey,
-            icon: const Icon(Icons.verified_outlined),
-            label: const Text('Kiểm tra Gemini API Key'),
-          ),
-        ],
         const SizedBox(height: 16),
         Text(status),
       ],
-    );
-  }
-
-  Future<void> _testGeminiApiKey() async {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Đang kiểm tra kết nối tới Gemini API...'),
-        duration: Duration(seconds: 2),
-      ),
-    );
-    final isValid = await AiAssistantEngine.testApiKey(geminiApiKey ?? '');
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          isValid
-              ? '🟢 Gemini API Key hợp lệ và hoạt động tốt!'
-              : '🔴 Gemini API Key không hợp lệ hoặc lỗi kết nối mạng.',
-        ),
-        backgroundColor: isValid ? Colors.green.shade800 : Colors.red.shade800,
-        duration: const Duration(seconds: 3),
-      ),
-    );
-  }
-
-  Future<void> _testOpenRouterApiKey() async {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Đang kiểm tra kết nối tới OpenRouter...'),
-        duration: Duration(seconds: 2),
-      ),
-    );
-    final isValid = await AiAssistantEngine.testOpenRouterApiKey(
-      openRouterApiKey ?? '',
-      model: openRouterModel,
-    );
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          isValid
-              ? '🟢 OpenRouter API Key hợp lệ cho $openRouterModel!'
-              : '🔴 OpenRouter API Key không hợp lệ hoặc lỗi kết nối mạng.',
-        ),
-        backgroundColor: isValid ? Colors.green.shade800 : Colors.red.shade800,
-        duration: const Duration(seconds: 3),
-      ),
     );
   }
 

@@ -2,14 +2,14 @@
 
 ![CI](https://github.com/ThuyNhanVP/RemoteControl/actions/workflows/ci.yml/badge.svg)
 
-Ứng dụng Android điều khiển điều hòa bằng **đèn hồng ngoại (IR) có sẵn trên điện thoại**. Làm cho dùng cá nhân, thử trên TECNO Camon 40 (Android 16). Hỗ trợ nhiều giao thức vì cùng một hãng, thậm chí cùng một model, có máy ăn giao thức này, có máy ăn giao thức khác.
+Ứng dụng Android điều khiển điều hòa bằng **đèn hồng ngoại (IR) có sẵn trên điện thoại**.
 
 ## Tính năng
 
 - **Điều khiển TV LG và Toshiba:** các phím Nguồn, Tắt tiếng, Nguồn vào, Âm lượng, Kênh, mũi tên, OK, Quay lại, Menu qua cổng hồng ngoại (mã NEC lấy từ IRDB, chưa thử trên mọi đời TV). Giao diện có vòng mũi tên, hai thanh Vol/CH và hiệu ứng khi nhấn; nút tắt tiếng đổi biểu tượng luân phiên (app chỉ đoán theo số lần bấm vì hồng ngoại một chiều). Điện thoại không học được mã, nên hãng khác cần thêm mã vào `lib/tv.dart`.
 - **Màn hình chính kiểu smart home:** các thiết bị là hình tròn quanh nút điện thoại ở giữa. Nút giữa đập như nhịp tim và phát sóng; thiết bị bị sóng đẩy nhẹ khi sóng tới. Chỉ thiết bị vừa được điều khiển có đường nối và cung màu đồng hướng vào nút giữa. Kéo để đặt vị trí (nhớ trên máy), chạm để mở điều khiển, giữ lâu để đổi tên hoặc xóa, menu ba chấm để thêm. Thêm được điều hòa và TV (LG, Toshiba). Dòng chữ nhỏ dưới tiêu đề cho biết trạng thái đồng bộ Firebase, chạm để đồng bộ ngay.
 - **Điều khiển điều hòa:** Nguồn, Chế độ (Lạnh, Khô, Quạt, Tự động, Sưởi), Nhiệt độ, Quạt, Đảo gió, Ngủ, Đèn, Turbo. Nút nào giao thức không hỗ trợ thì bị làm mờ.
-- **Trợ lý Giọng nói AI:** Nói câu lệnh tiếng Việt tự nhiên ("Bật 24 độ chế độ làm lạnh", "Nóng quá hạ 2 độ", "Bật sưởi 28 độ quạt mạnh", "Tắt điều hòa"). AI Local Parser tự động nhận diện 100% offline; hỗ trợ kết nối Google Gemini AI Cloud hoặc OpenRouter với danh sách các mô hình Miễn phí (Llama 3.3 70B, DeepSeek R1, Gemini 2.0 Flash Lite, Qwen 2.5 32B, Mistral 7B).
+- **Trợ lý Giọng nói AI hoạt động cho toàn bộ thiết bị (Điều hòa & TV):** Nhận diện câu lệnh tiếng Việt tự nhiên cho cả điều hòa ("Bật 24 độ chế độ làm lạnh", "Nóng quá hạ 2 độ", "Bật sưởi 28 độ quạt mạnh", "Tắt điều hòa") và TV ("Bật TV", "Tắt tivi", "Tăng âm lượng", "Giảm 3 nấc âm lượng", "Tắt tiếng TV", "Chuyển kênh", "Mở menu TV", "Nguồn vào HDMI", "Bấm OK"). Tích hợp trực tiếp trên mọi màn hình: Smart Home Hub, Điều hòa (AcPage) và TV (TvPage). Bộ xử lý Local Smart NLP hoạt động 100% offline; hỗ trợ kết nối Google Gemini AI Cloud hoặc OpenRouter với danh sách các mô hình Miễn phí (Llama 3.3 70B, DeepSeek R1, Gemini 2.0 Flash Lite, Qwen 2.5 32B, Mistral 7B).
 - **11 giao thức IR:** Gree A, Gree B, Coolix, LG1, LG2, Midea, TCL, Samsung, Daikin, Panasonic, Electra (remote AUX và mã YKR-…; đã chạy trên Casper TC-09IS36 với remote YKR-C/001).
 - **Dò tự động giao thức:** app gửi lệnh BẬT lần lượt theo từng giao thức, bạn bấm DỪNG khi điều hòa kêu "bíp".
 - **Nhiều thiết bị, nhiều cài sẵn:** mỗi điều hòa có giao thức và trạng thái riêng. Lưu và áp dụng cài sẵn bằng một chạm. Dữ liệu lưu trong SQLite trên máy.
@@ -36,7 +36,7 @@
 ## Yêu cầu
 
 - Flutter (bản mới) và Android Studio. Làm việc trên Windows.
-- Điện thoại Android **có đèn IR** (ConsumerIrManager). App tự kiểm tra và hiện "IR: CÓ" hoặc "KHÔNG" trong Cài đặt.
+- Điện thoại Android **có đèn IR** (ConsumerIrManager). App tự kiểm tra và hiện "IR: CÓ" hoặc "KHÔNG" trong Cài đặt thiết bị (biểu tượng "i" ở trang điều hòa).
 - Bật Developer Mode trong Windows (Flutter cần để tạo symlink khi cài plugin).
 - Muốn đồng bộ: một project Firebase (gói miễn phí Spark là đủ).
 
@@ -85,17 +85,17 @@ Bộ hiểu câu lệnh chạy ngoại tuyến không cần khóa. Muốn dùng 
    const defaultOpenRouterApiKey = '';
    ```
    File này bắt buộc phải có, vì `main.dart` và `ai_assistant.dart` import nó. Để chuỗi rỗng nếu bạn không có khóa.
-2. Dán khóa của bạn vào hai dấu nháy, hoặc nhập khóa ngay trong app: Cài đặt, ô nhập khóa. Khóa nhập trong app lưu trên máy, không đồng bộ lên Firebase.
+2. Dán khóa của bạn vào hai dấu nháy, hoặc nhập khóa ngay trong app: biểu tượng bánh răng ở màn hình chính, mục Trợ lý AI. Khóa nhập trong app lưu trên máy, không đồng bộ lên Firebase.
 3. Không gửi khóa cho người khác và không ghi khóa vào README hay `AGENTS.md`.
 
 ## Cách dùng
 
 1. **Chọn thiết bị:** bấm tên điều hòa ở thanh trên để mở danh sách. Chạm vào một thiết bị để dùng, bấm dấu ba chấm cạnh nó để đổi tên hoặc xóa, bấm **Thêm thiết bị** để tạo mới.
-2. **Tìm giao thức đúng:** bấm biểu tượng chữ "i" ở góc phải trên để vào Cài đặt, bấm **Dò tự động giao thức**, đứng gần điều hòa. Điều hòa "bíp" thì bấm **DỪNG** ngay. Hoặc chọn tay từng giao thức ở các ô chọn.
+2. **Tìm giao thức đúng:** bấm biểu tượng chữ "i" ở góc phải trên để vào Cài đặt thiết bị, bấm **Dò tự động giao thức**, đứng gần điều hòa. Điều hòa "bíp" thì bấm **DỪNG** ngay. Hoặc chọn tay từng giao thức ở các ô chọn.
 3. **Điều khiển:** bấm các nút trên màn hình chính. Mỗi lần đổi chế độ, quạt, nhiệt độ hay tính năng, app gửi toàn bộ trạng thái kèm lệnh BẬT, giống bấm nút trên remote thật.
 4. **Cài sẵn:** bấm "Lưu cài đặt này" để lưu, bấm vào một cài sẵn để áp dụng, bấm dấu x trên cài sẵn để xóa.
-5. **Mã thô (Coolix, LG):** trong Cài đặt có ô gửi mã hex để thử mã tìm được từ nơi khác.
-6. **Đồng bộ:** Cài đặt, "Đăng nhập bằng Google". Thiết bị và cài sẵn tự đồng bộ sau mỗi thay đổi và khi mở lại app. Nút **Lịch sử** hiện thống kê giờ bật.
+5. **Mã thô (Coolix, LG):** trong Cài đặt thiết bị có ô gửi mã hex để thử mã tìm được từ nơi khác.
+6. **Đồng bộ:** bánh răng ở màn hình chính, "Đăng nhập bằng Google". Thiết bị và cài sẵn tự đồng bộ sau mỗi thay đổi và khi mở lại app. Nút **Lịch sử** hiện thống kê giờ bật.
 7. **Thời tiết:** thẻ ở đầu màn hình chính. Bấm tên thành phố để đổi, bấm biểu tượng làm mới để cập nhật, bấm **Áp dụng** dưới gợi ý để đặt chế độ và nhiệt độ rồi gửi lệnh.
 8. **Ô cài đặt nhanh:** mở app một lần, rồi kéo thanh thông báo xuống, bấm biểu tượng bút chì (chỉnh sửa), kéo ô **Điều hòa** vào bảng. Ô sáng là đang bật. Mỗi lần bấm app phát lệnh BẬT hoặc TẮT của thiết bị bạn dùng gần nhất.
 9. **Nhắc trước báo thức:** đặt báo thức trong app Đồng hồ rồi mở app này một lần để nó đọc giờ báo thức. Lần đầu app xin quyền thông báo, hãy cho phép. Nếu đổi báo thức, mở lại app để cập nhật.
@@ -108,7 +108,8 @@ Lưu ý: IR chỉ truyền một chiều, app không biết điều hòa thật 
 lib/
   main.dart            Màn điều khiển điều hòa (AcPage), trạng thái màn hình, gọi sang Kotlin
   tv.dart              Mã NEC của TV (LG, Toshiba), hàm tạo xung và màn điều khiển TV (TvPage)
-  hub.dart             Màn hình chính kéo thả (HubPage), vị trí mặc định quanh tâm
+  hub.dart             Màn hình chính kéo thả (HubPage), vị trí mặc định quanh tâm, hàm `separate` đẩy thiết bị ra như bong bóng
+  settings.dart        Cài đặt toàn cục (đăng nhập Google, đồng bộ, cấu hình AI) và AiConfig dùng chung
   protocols.dart       Enum và mã hóa 11 giao thức (hàm thuần, không phụ thuộc Flutter)
   db.dart              SQLite (thiết bị, cài sẵn, meta) và dữ liệu phục vụ đồng bộ
   firebase_sync.dart   Đăng nhập, đồng bộ Firestore, nhật ký, màn Lịch sử
