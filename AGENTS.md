@@ -47,7 +47,7 @@ App Flutter (Android) điều khiển điều hòa bằng đèn IR của điện
 | `android/.../ReminderReceiver.kt` | Hiện thông báo khi đến giờ nhắc (kênh `remind`) | |
 | `android/app/src/main/AndroidManifest.xml` | Quyền `TRANSMIT_IR`, `INTERNET`, `POST_NOTIFICATIONS`, `RECORD_AUDIO`; `android:label` là tên app; `<receiver android:name=".ReminderReceiver" android:exported="false"/>` và `<service android:name=".IrTileService" ...BIND_QUICK_SETTINGS_TILE>` | |
 | `.github/workflows/ci.yml` | CI: analyze (`--no-fatal-infos`), test, build APK debug; tự tạo bản giả của 3 file bị gitignore | |
-| `assets/icon/` | `icon.png`, `icon_foreground.png` cho `flutter_launcher_icons` | |
+| `assets/icon/` | `icon.png`, `icon_foreground.png`, `icon_background.png` (nền gradient, dùng làm nền adaptive) cho `flutter_launcher_icons` | |
 
 Trong `_AcPageState` (main.dart): `_cmd(proto, on, {powerChange})` dựng lệnh theo giao thức; `_send(on)` gửi và ghi nhật ký; `_change(fn)` đổi giá trị rồi gửi ngay; `_toggleFeat`; `_setProto`; `_applyMap/_snapshot/_persist` (state <-> SQLite); `_useDevice`; `_reloadFromCloud`; `_probe/_stopProbe`; `_remote()` (màn chính), `_settings()`; getters theo giao thức: `_feats`, `_minTemp`, `_modes`, `_inFrame`, `_isLg`, `_isCoolix`.
 
@@ -61,7 +61,7 @@ Trong `_AcPageState` (main.dart): `_cmd(proto, on, {powerChange})` dựng lệnh
 - Thẻ thời tiết Open-Meteo (hiện tại, 5 ngày, gợi ý cài điều hòa kể cả Sưởi khi cảm giác <= 21°C, nút **Áp dụng** gửi lệnh, đổi thành phố, cache 30 phút). LG không có Sưởi nên báo thay vì áp dụng.
 - Ô cài đặt nhanh "Điều hòa": bật/tắt thiết bị đang dùng không cần mở app. Dart (`_syncTile`, gọi trong `_persist`, `_send`, `_useDevice`) lưu sẵn mẫu xung BẬT và TẮT; Kotlin phát khi bấm. Quay lại app thì `_adoptTile` nhận trạng thái nguồn.
 - Nhắc trước báo thức: mỗi lần có dự báo mới, app đọc báo thức kế tiếp (`AlarmManager.getNextAlarmClock`), lấy dự báo cảm giác của giờ đó, nếu <= 21°C thì hẹn thông báo trước 20 phút gợi ý bật Sưởi; không lạnh hoặc không có báo thức thì hủy.
-- Test mã hóa, README, icon bông tuyết.
+- Test mã hóa, README, icon ngôi nhà nét trắng dày, chấm đồng và hai cung sóng trên nền gradient như màn hình chính.
 
 ## 4. Giao thức
 
@@ -164,6 +164,7 @@ Thư viện chính (có thể thiếu một số gói; xem `pubspec.yaml`): sqfl
 
 | Ngày | Thay đổi | File |
 |---|---|---|
+| 2026-11-24 | Đổi icon app sang ngôi nhà nét trắng dày với chấm đồng và hai cung sóng, nền gradient như màn hình chính (`icon_background.png` mới làm nền adaptive) | assets/icon/*, pubspec.yaml, android/app/src/main/res (icon sinh bằng flutter_launcher_icons), README.md, AGENTS.md |
 | 2026-11-24 | Kéo thiết bị trên hub: các thiết bị khác và nút giữa bị đẩy ra như bong bóng, không còn đè lên nhau (`separate` trong lib/hub.dart, khoảng cách `_gap`/`_hubGap`, vị trí mới của mọi thiết bị lưu qua `Db.setPos` khi thả tay); thêm 2 test `separate` | lib/hub.dart, test/hub_test.dart, README.md, AGENTS.md |
 | 2026-11-24 | Đưa đăng nhập Google/đồng bộ và cấu hình AI ra màn hình chính: nút bánh răng ở hub mở `SettingsPage` (`lib/settings.dart`); `AiConfig.load()` thay đoạn đọc cấu hình lặp ở hub/`AcPage`/`TvPage`; `AcPage` chỉ còn Cài đặt thiết bị (giao thức, dò, mã hex); thêm `test/settings_test.dart` | lib/settings.dart, lib/hub.dart, lib/main.dart, lib/tv.dart, test/settings_test.dart, README.md, AGENTS.md |
 | 2026-11-24 | Trợ lý Giọng nói AI hoạt động cho toàn bộ thiết bị hỗ trợ (Điều hòa & TV LG/Toshiba); mở rộng Local Smart NLP và Cloud Gemini/OpenRouter nhận diện toàn bộ phím TV (nguồn, âm lượng tăng/giảm nhiều nấc, tắt tiếng, chuyển kênh tới/lui, nguồn vào HDMI, menu, điều hướng OK/Back); tích hợp nút AI trên HubPage và TvPage; thêm buildAcCmd; thêm 12 unit test | lib/ai_assistant.dart, lib/tv.dart, lib/hub.dart, lib/main.dart, lib/protocols.dart, test/ai_assistant_test.dart, README.md, AGENTS.md |
