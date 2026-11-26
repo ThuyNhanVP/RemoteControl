@@ -2,7 +2,7 @@
 
 ![CI](https://github.com/ThuyNhanVP/RemoteControl/actions/workflows/ci.yml/badge.svg)
 
-Ứng dụng Android điều khiển điều hòa bằng **đèn hồng ngoại (IR) có sẵn trên điện thoại**. Làm cho dùng cá nhân, thử trên TECNO Camon 40 (Android 16). Hỗ trợ nhiều giao thức vì cùng một hãng, thậm chí cùng một model, có máy ăn giao thức này, có máy ăn giao thức khác.
+Ứng dụng Android điều khiển điều hòa bằng **đèn hồng ngoại (IR) có sẵn trên điện thoại**.
 
 ## Tính năng
 
