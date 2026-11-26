@@ -2,7 +2,7 @@
 
 ![CI](https://github.com/ThuyNhanVP/RemoteControl/actions/workflows/ci.yml/badge.svg)
 
-Ứng dụng Android điều khiển điều hòa bằng **đèn hồng ngoại (IR) có sẵn trên điện thoại**.
+Ứng dụng Android điều khiển điều hòa bằng **đèn hồng ngoại (IR) có sẵn trên điện thoại**. Làm cho dùng cá nhân, thử trên TECNO Camon 40 (Android 16). Hỗ trợ nhiều giao thức vì cùng một hãng, thậm chí cùng một model, có máy ăn giao thức này, có máy ăn giao thức khác.
 
 ## Tính năng
 
@@ -223,7 +223,7 @@ Các bài test so từng byte với mã mẫu của thư viện IRremoteESP8266 
 ## Đổi tên và icon
 
 - Tên hiển thị: sửa `android:label` trong `AndroidManifest.xml`.
-- Icon: đặt `icon.png` và `icon_foreground.png` vào `assets/icon/`, khai báo mục `flutter_launcher_icons` trong `pubspec.yaml`, rồi chạy `dart run flutter_launcher_icons`.
+- Icon: đặt `icon.png`, `icon_foreground.png` và `icon_background.png` vào `assets/icon/`, khai báo mục `flutter_launcher_icons` trong `pubspec.yaml`, rồi chạy `dart run flutter_launcher_icons`.
 
 ## Xử lý sự cố
 
