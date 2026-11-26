@@ -223,7 +223,7 @@ Các bài test so từng byte với mã mẫu của thư viện IRremoteESP8266 
 ## Đổi tên và icon
 
 - Tên hiển thị: sửa `android:label` trong `AndroidManifest.xml`.
-- Icon: đặt `icon.png` và `icon_foreground.png` vào `assets/icon/`, khai báo mục `flutter_launcher_icons` trong `pubspec.yaml`, rồi chạy `dart run flutter_launcher_icons`.
+- Icon: đặt `icon.png`, `icon_foreground.png` và `icon_background.png` vào `assets/icon/`, khai báo mục `flutter_launcher_icons` trong `pubspec.yaml`, rồi chạy `dart run flutter_launcher_icons`.
 
 ## Xử lý sự cố
 
